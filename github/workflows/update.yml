@@ -14,7 +14,7 @@ jobs:
 
       - name: fetch latest rates
         run: |
-          curl -s "https://agilebuddy.uk/latest/freephasedynamic?region=westmidlands" > latest.html
+          curl -s "https://agilebuddy.uk/latest/freephasedynamic" > latest.html
 
           GREEN=$(grep -oP 'Green:\s*\K[0-9.]+' latest.html || echo "0")
           AMBER=$(grep -oP 'Amber:\s*\K[0-9.]+' latest.html || echo "0")
