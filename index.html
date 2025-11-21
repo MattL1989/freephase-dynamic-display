@@ -1,78 +1,54 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>EDF FreePhase Dynamic</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-    body {
-        background: #111;
-        color: white;
-        font-family: Arial, sans-serif;
-        text-align: center;
-        padding: 20px;
-    }
-    h1 { font-size: 48px; margin-top: 10px; }
-    h2 { font-size: 32px; margin-top: 40px; }
-    .band {
-        width: 90%;
-        margin: 20px auto;
-        padding: 25px;
-        border-radius: 12px;
-        font-size: 32px;
-        font-weight: bold;
-    }
-    .green { background: #158638; }
-    .amber { background: #caa500; }
-    .red   { background: #b00000; }
-    .small {
-        font-size: 22px;
-        opacity: 0.8;
-        margin-top: 8px;
-    }
-</style>
+  <meta charset="UTF-8">
+  <title>FreePhase Dynamic – West Midlands</title>
+  <style>
+    body { background: black; color: white; text-align: center; font-family: Arial; }
+    .band { width: 90%; margin: 15px auto; padding: 25px; font-size: 38px; border-radius: 12px; }
+    .green { background: #1f8f2e; }
+    .amber { background: #cfa500; }
+    .red { background: #b30000; }
+  </style>
 </head>
 <body>
 
 <h1>West Midlands</h1>
 
 <h2>Today</h2>
-<div class="band green" id="today-green"></div>
-<div class="band amber" id="today-amber"></div>
-<div class="band red" id="today-red"></div>
+
+<div id="today-green" class="band green"></div>
+<div id="today-amber" class="band amber"></div>
+<div id="today-red" class="band red"></div>
 
 <h2>Tomorrow</h2>
-<div class="band green" id="tomorrow-green"></div>
-<div class="band amber" id="tomorrow-amber"></div>
-<div class="band red" id="tomorrow-red"></div>
+
+<div id="tomorrow-green" class="band green"></div>
+<div id="tomorrow-amber" class="band amber"></div>
+<div id="tomorrow-red" class="band red"></div>
 
 <script>
-fetch("data.json?_=" + Date.now())
-    .then(r => r.json())
-    .then(data => {
+fetch("data.json?cache=" + Date.now())
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById("today-green").textContent =
+      (data.today.green).toFixed(4) + " p/kWh";
 
-        const t = data.today;
-        const n = data.tomorrow;
-        const times = data.times;
+    document.getElementById("today-amber").textContent =
+      (data.today.amber).toFixed(4) + " p/kWh";
 
-        document.getElementById("today-green").innerHTML =
-            `${t.green}<div class="small">${times.green}</div>`;
+    document.getElementById("today-red").textContent =
+      (data.today.red).toFixed(4) + " p/kWh";
 
-        document.getElementById("today-amber").innerHTML =
-            `${t.amber}<div class="small">${times.amber}</div>`;
+    document.getElementById("tomorrow-green").textContent =
+      (data.tomorrow.green).toFixed(4) + " p/kWh";
 
-        document.getElementById("today-red").innerHTML =
-            `${t.red}<div class="small">${times.red}</div>`;
+    document.getElementById("tomorrow-amber").textContent =
+      (data.tomorrow.amber).toFixed(4) + " p/kWh";
 
-        document.getElementById("tomorrow-green").innerHTML =
-            `${n.green}<div class="small">${times.green}</div>`;
-
-        document.getElementById("tomorrow-amber").innerHTML =
-            `${n.amber}<div class="small">${times.amber}</div>`;
-
-        document.getElementById("tomorrow-red").innerHTML =
-            `${n.red}<div class="small">${times.red}</div>`;
-    });
+    document.getElementById("tomorrow-red").textContent =
+      (data.tomorrow.red).toFixed(4) + " p/kWh";
+  });
 </script>
 
 </body>
