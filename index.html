@@ -1,53 +1,61 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>FreePhase Dynamic – West Midlands</title>
-  <style>
-    body { background: black; color: white; text-align: center; font-family: Arial; }
-    .band { width: 90%; margin: 15px auto; padding: 25px; font-size: 38px; border-radius: 12px; }
-    .green { background: #1f8f2e; }
-    .amber { background: #cfa500; }
-    .red { background: #b30000; }
-  </style>
+<meta charset="UTF-8">
+<title>EDF FreePhase Dynamic</title>
+<style>
+  body {
+    background: #000;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+  }
+  .band {
+    width: 90%;
+    margin: 20px auto;
+    padding: 20px;
+    font-size: 32px;
+    border-radius: 12px;
+    color: white;
+  }
+  .green { background: #1f8f2e; }
+  .amber { background: #c9a200; }
+  .red { background: #b00000; }
+  h1, h2 { margin: 30px; }
+</style>
 </head>
 <body>
 
 <h1>West Midlands</h1>
 
 <h2>Today</h2>
-
 <div id="today-green" class="band green"></div>
 <div id="today-amber" class="band amber"></div>
 <div id="today-red" class="band red"></div>
 
 <h2>Tomorrow</h2>
-
 <div id="tomorrow-green" class="band green"></div>
 <div id="tomorrow-amber" class="band amber"></div>
 <div id="tomorrow-red" class="band red"></div>
 
 <script>
-fetch("data.json?cache=" + Date.now())
+function formatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
+fetch("data.json")
   .then(r => r.json())
   .then(data => {
-    document.getElementById("today-green").textContent =
-      (data.today.green).toFixed(4) + " p/kWh";
+    ["today", "tomorrow"].forEach(day => {
+      ["green", "amber", "red"].forEach(band => {
+        const item = data[day][band];
+        if (!item) return;
 
-    document.getElementById("today-amber").textContent =
-      (data.today.amber).toFixed(4) + " p/kWh";
-
-    document.getElementById("today-red").textContent =
-      (data.today.red).toFixed(4) + " p/kWh";
-
-    document.getElementById("tomorrow-green").textContent =
-      (data.tomorrow.green).toFixed(4) + " p/kWh";
-
-    document.getElementById("tomorrow-amber").textContent =
-      (data.tomorrow.amber).toFixed(4) + " p/kWh";
-
-    document.getElementById("tomorrow-red").textContent =
-      (data.tomorrow.red).toFixed(4) + " p/kWh";
+        const el = document.getElementById(`${day}-${band}`);
+        el.innerHTML = `${band.toUpperCase()} – ${item.price.toFixed(2)}p<br>${formatTime(item.start)} to ${formatTime(item.end)}`;
+      });
+    });
   });
 </script>
 
