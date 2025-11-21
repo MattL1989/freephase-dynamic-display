@@ -1,0 +1,41 @@
+name: update freephase rates
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs on: ubuntu latest
+    steps:
+    - name: checkout
+      uses: actions checkout at v4
+
+    - name: fetch latest rates
+      run: |
+        curl -s https://agilebuddy.uk/latest/freephasedynamic?region=westmidlands > latest.html
+        GREEN=$(grep -oP 'Green: \K[0-9.]*' latest.html)
+        AMBER=$(grep -oP 'Amber: \K[0-9.]*' latest.html)
+        RED=$(grep -oP 'Red: \K[0-9.]*' latest.html)
+
+        echo "{
+            \"today\": {
+                \"green\": \"${GREEN} pence\",
+                \"amber\": \"${AMBER} pence\",
+                \"red\": \"${RED} pence\"
+            },
+            \"tomorrow\": {
+                \"green\": \"${GREEN} pence\",
+                \"amber\": \"${AMBER} pence\",
+                \"red\": \"${RED} pence\"
+            }
+        }" > data.json
+
+    - name: commit
+      run: |
+        git config user.name "auto updater"
+        git config user.email "action at github.com"
+        git add data.json
+        git commit -m "update rates" || echo "no changes"
+        git push
