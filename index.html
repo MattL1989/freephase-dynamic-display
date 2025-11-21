@@ -44,7 +44,8 @@ function formatTime(iso) {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-fetch("data.json")
+// *** FIXED: now reads the live data.json from your main branch ***
+fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json")
   .then(r => r.json())
   .then(data => {
     ["today", "tomorrow"].forEach(day => {
@@ -53,9 +54,12 @@ fetch("data.json")
         if (!item) return;
 
         const el = document.getElementById(`${day}-${band}`);
-        el.innerHTML = `${band.toUpperCase()} – ${item.price.toFixed(2)}p<br>${formatTime(item.start)} to ${formatTime(item.end)}`;
+        el.innerHTML = `${band.toUpperCase()}<br>${item.price.toFixed(2)}p<br>${formatTime(item.start)} to ${formatTime(item.end)}`;
       });
     });
+  })
+  .catch(err => {
+    console.error("Error loading data.json:", err);
   });
 </script>
 
