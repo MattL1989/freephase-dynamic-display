@@ -1,73 +1,110 @@
-name: update freephase rates
+name: Update FreePhase rates
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 */1 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  update:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install jq
-        run: sudo apt-get install jq -y
+        run: |
+          sudo apt update
+          sudo apt install -y jq
 
-      - name: Fetch Kraken banded rates
+      - name: Fetch rates
         run: |
           set -euo pipefail
 
-          KRKN_URL="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
+          API="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
 
-          curl -s "$KRKN_URL" > raw.json
+          TODAY=$(date -u +"%Y-%m-%dT00:00:00Z")
+          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%dT00:00:00Z")
+          DAY_AFTER=$(date -u -d "+2 days" +"%Y-%m-%dT00:00:00Z")
 
-          TODAY=$(date -u +"%Y-%m-%d")
-          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
+          # Fetch 48 hours so we have today + tomorrow bands
+          curl -s "${API}?period_from=${TODAY}&period_to=${DAY_AFTER}" > raw.json
 
-          # Helper jq function to detect band by time
-          cat > classify.jq << 'EOF'
-          def band_from_times:
-            .valid_from as $v
-            | ($v | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) as $ts
-            | ($ts | strftime("%H:%M")) as $t
-            | if ($t >= "23:00" or $t < "06:00") then "green"
-              elif ($t >= "06:00" and $t < "16:00") then "amber"
-              elif ($t >= "16:00" and $t < "19:00") then "red"
-              else "amber"
-              end;
+          # Ensure response is valid JSON with results array
+          if ! jq -e '.results' raw.json > /dev/null 2>&1; then
+            echo "API error or malformed response"
+            exit 1
+          fi
 
-          def dayfilter($day):
-            map(select(.valid_from | startswith($day)));
+          # Function to extract the lowest price interval in a time range
+          extract_band() {
+            local start=$1
+            local end=$2
 
-          def byband:
-            map({
-              band: band_from_times,
-              price: .value_inc_vat,
-              start: .valid_from,
-              end: .valid_to
-            })
-            | group_by(.band)
-            | map({ key: (.[0].band), value: .[0] })
-            | from_entries;
-
-          {
-            today: (dayfilter($ENV.TODAY) | byband),
-            tomorrow: (dayfilter($ENV.TOMORROW) | byband)
+            jq -r --arg s "$start" --arg e "$end" '
+              .results
+              | map(select(.valid_from >= $s and .valid_to <= $e))
+              | sort_by(.value_inc_vat)
+              | if length == 0 then null else
+                  .[0] | {
+                    band:
+                      (if .value_inc_vat < 20 then "green"
+                       elif .value_inc_vat < 30 then "amber"
+                       else "red"
+                      end),
+                    price: (.value_inc_vat * 100),
+                    start: .valid_from,
+                    end: .valid_to
+                  }
+                end
+            ' raw.json
           }
-          EOF
 
-          TODAY="$TODAY" TOMORROW="$TOMORROW" jq -f classify.jq raw.json > data.json
+          # Today ranges (utc)
+          GREEN_T_START="${TODAY%Z}T23:00:00Z"
+          GREEN_T_END=$(date -u -d "${TODAY%Z}T23:00:00Z +7 hours" +"%Y-%m-%dT%H:%M:%SZ")
 
-      - name: Commit data.json
+          AMBER_T_START="${TODAY%Z}T06:00:00Z"
+          AMBER_T_END="${TODAY%Z}T16:00:00Z"
+
+          RED_T_START="${TODAY%Z}T16:00:00Z"
+          RED_T_END="${TODAY%Z}T19:00:00Z"
+
+          # Tomorrow ranges
+          GREEN_TM_START=$(date -u -d "$TOMORROW 23:00" +"%Y-%m-%dT%H:%M:%SZ")
+          GREEN_TM_END=$(date -u -d "$TOMORROW 23:00 +7 hours" +"%Y-%m-%dT%H:%M:%SZ")
+
+          AMBER_TM_START="${TOMORROW%Z}T06:00:00Z"
+          AMBER_TM_END="${TOMORROW%Z}T16:00:00Z"
+
+          RED_TM_START="${TOMORROW%Z}T16:00:00Z"
+          RED_TM_END="${TOMORROW%Z}T19:00:00Z"
+
+          jq -n \
+            --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
+            --argjson tamber "$(extract_band "$AMBER_T_START" "$AMBER_T_END")" \
+            --argjson tred "$(extract_band "$RED_T_START" "$RED_T_END")" \
+            --argjson tmgreen "$(extract_band "$GREEN_TM_START" "$GREEN_TM_END")" \
+            --argjson tmamber "$(extract_band "$AMBER_TM_START" "$AMBER_TM_END")" \
+            --argjson tmred "$(extract_band "$RED_TM_START" "$RED_TM_END")" \
+            '{
+              today: {
+                green: $tgreen,
+                amber: $tamber,
+                red: $tred
+              },
+              tomorrow: {
+                green: $tmgreen,
+                amber: $tmamber,
+                red: $tmred
+              }
+            }' > data.json
+
+      - name: Commit updated data
         run: |
-          git config user.name "auto-updater"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
           git add data.json
-          git commit -m "update freephase rates" || echo "No changes"
+          git commit -m "update data" || echo "no changes"
           git push
