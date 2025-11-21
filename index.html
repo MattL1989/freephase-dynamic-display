@@ -1,87 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>EDF FreePhase Dynamic</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FreePhase Dynamic</title>
+
 <style>
     body {
         background: #111;
         color: white;
-        font-family: Arial, sans-serif;
+        font-family: Arial, Helvetica, sans-serif;
         text-align: center;
         margin: 0;
         padding: 0;
     }
-    .container {
-        width: 90%;
-        max-width: 1200px;
-        margin: auto;
-        padding-top: 20px;
-    }
+
     h1 {
-        font-size: 40px;
+        font-size: 3rem;
+        margin-top: 30px;
         margin-bottom: 10px;
     }
+
     h2 {
-        font-size: 32px;
-        margin: 20px 0 10px;
+        font-size: 2.2rem;
+        margin-top: 40px;
+        margin-bottom: 20px;
     }
+
     .band {
-        font-size: 32px;
-        padding: 20px;
-        margin: 10px 0;
+        width: 90%;
+        margin: 15px auto;
+        padding: 25px;
         border-radius: 12px;
+        font-size: 2rem;
         font-weight: bold;
     }
-    .green { background: #1f8f2e; }
-    .amber { background: #c89c00; }
-    .red { background: #b30000; }
-    small {
-        font-size: 18px;
-        opacity: 0.9;
+
+    .green {
+        background: #1e8c3a;
     }
+
+    .amber {
+        background: #c79b00;
+    }
+
+    .red {
+        background: #b30000;
+    }
+
 </style>
 </head>
 <body>
-    <div class="container">
-        <h1>EDF FreePhase Dynamic<br>West Midlands</h1>
 
-        <section id="today-section">
-            <h2>Today</h2>
-            <div class="band green">Green <span id="today-green">Loading...</span><br><small id="today-green-time"></small></div>
-            <div class="band amber">Amber <span id="today-amber">Loading...</span><br><small id="today-amber-time"></small></div>
-            <div class="band red">Red <span id="today-red">Loading...</span><br><small id="today-red-time"></small></div>
-        </section>
+<h1>West Midlands</h1>
 
-        <section id="tomorrow-section">
-            <h2>Tomorrow</h2>
-            <div class="band green">Green <span id="tomorrow-green">Loading...</span><br><small id="tomorrow-green-time"></small></div>
-            <div class="band amber">Amber <span id="tomorrow-amber">Loading...</span><br><small id="tomorrow-amber-time"></small></div>
-            <div class="band red">Red <span id="tomorrow-red">Loading...</span><br><small id="tomorrow-red-time"></small></div>
-        </section>
-    </div>
+<h2>Today</h2>
 
-    <script>
-        fetch('data.json?_=' + new Date().getTime())
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('today-green').textContent = data.today.green;
-                document.getElementById('today-amber').textContent = data.today.amber;
-                document.getElementById('today-red').textContent = data.today.red;
+<div class="band green">
+    <span id="today-green"></span>
+</div>
 
-                document.getElementById('tomorrow-green').textContent = data.tomorrow.green;
-                document.getElementById('tomorrow-amber').textContent = data.tomorrow.amber;
-                document.getElementById('tomorrow-red').textContent = data.tomorrow.red;
+<div class="band amber">
+    <span id="today-amber"></span>
+</div>
 
-                document.getElementById('today-green-time').textContent = data.times.green;
-                document.getElementById('today-amber-time').textContent = data.times.amber.join(', ');
-                document.getElementById('today-red-time').textContent = data.times.red;
+<div class="band red">
+    <span id="today-red"></span>
+</div>
 
-                document.getElementById('tomorrow-green-time').textContent = data.times.green;
-                document.getElementById('tomorrow-amber-time').textContent = data.times.amber.join(', ');
-                document.getElementById('tomorrow-red-time').textContent = data.times.red;
-            });
-    </script>
+<h2>Tomorrow</h2>
+
+<div class="band green">
+    <span id="tomorrow-green"></span>
+</div>
+
+<div class="band amber">
+    <span id="tomorrow-amber"></span>
+</div>
+
+<div class="band red">
+    <span id="tomorrow-red"></span>
+</div>
+
+<script>
+fetch("data.json")
+  .then(r => r.json())
+  .then(data => {
+    const today = data.today;
+    const tomorrow = data.tomorrow;
+    const times = data.times;
+
+    // Today
+    document.getElementById("today-green").textContent =
+      `${today.green} — ${times.green}`;
+
+    document.getElementById("today-amber").textContent =
+      `${today.amber} — ${times.amber}`;
+
+    document.getElementById("today-red").textContent =
+      `${today.red} — ${times.red}`;
+
+    // Tomorrow
+    document.getElementById("tomorrow-green").textContent =
+      `${tomorrow.green} — ${times.green}`;
+
+    document.getElementById("tomorrow-amber").textContent =
+      `${tomorrow.amber} — ${times.amber}`;
+
+    document.getElementById("tomorrow-red").textContent =
+      `${tomorrow.red} — ${times.red}`;
+  });
+</script>
+
 </body>
 </html>
