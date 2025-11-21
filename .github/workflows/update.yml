@@ -31,46 +31,51 @@ jobs:
 
           curl -s -X POST "$EDF_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"date\":\"$TODAY\"}" > today.json
+            -d "{\"date\":\"$TODAY\"}" > today_raw.json
 
           curl -s -X POST "$EDF_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
+            -d "{\"date\":\"$TOMORROW\"}" > tomorrow_raw.json
 
-          # Define jq logic
+          # jq script (jq 1.5 compatible)
           cat > calc.jq << 'EOF'
-          def band:
-            . as $t |
-            if   $t >= "23:00" or $t < "06:00" then "green"
-            elif $t >= "06:00" and $t < "16:00" then "amber"
-            elif $t >= "16:00" and $t < "19:00" then "red"
+          def tohm:
+            sub("Z$"; "")
+            | strptime("%Y-%m-%dT%H:%M:%S")
+            | mktime
+            | strftime("%H:%M");
+
+          def band(t):
+            if t >= "23:00" or t < "06:00" then "green"
+            elif t >= "06:00" and t < "16:00" then "amber"
+            elif t >= "16:00" and t < "19:00" then "red"
             else "amber"
             end;
 
-          def avg(v): (v | add) / (v | length);
+          def avg(arr): (arr | add) / (arr | length);
 
           def process:
             .results
-            | map({time: (.valid_from | sub("Z$"; "") | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M")),
-                   price: .value_inc_vat})
-            | group_by(.time | band)
-            | map({key: (.[0].time | band), value: (map(.price) | avg)})
-            | from_entries;
+            | map({t: (.valid_from | tohm), v: .value_inc_vat})
+            | group_by(.t | band)
+            | map({ (.[0].t | band): (map(.v) | avg) })
+            | add;
+          EOF
 
+          TODAY_DATA=$(jq -f calc.jq today_raw.json)
+          TOMORROW_DATA=$(jq -f calc.jq tomorrow_raw.json)
+
+          jq -n --argjson t "$TODAY_DATA" --argjson n "$TOMORROW_DATA" '
           {
-            today:    ( input     | process | map_values(. as $v | ($v|tostring + " pence")) ),
-            tomorrow: ( input     | process | map_values(. as $v | ($v|tostring + " pence")) ),
+            today:    ($t | map_values(. as $v | ($v|tostring + " pence"))),
+            tomorrow: ($n | map_values(. as $v | ($v|tostring + " pence"))),
             times: {
               green: "23:00–06:00",
               amber: "06:00–16:00, 19:00–23:00",
               red:   "16:00–19:00"
             }
           }
-          EOF
-
-          jq -n --argfile t today.json --argfile n tomorrow.json \
-             'include "calc"; {today: ($t|process), tomorrow: ($n|process), times: {green:"23:00–06:00", amber:"06:00–16:00, 19:00–23:00", red:"16:00–19:00"}}' \
-             > data.json
+          ' > data.json
 
       - name: Commit updated data
         run: |
