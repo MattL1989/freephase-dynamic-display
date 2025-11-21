@@ -1,77 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>EDF FreePhase Dynamic West Midlands</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EDF FreePhase Dynamic</title>
 <style>
     body {
-        font-family: Arial, sans-serif;
         background: #111;
         color: white;
+        font-family: Arial, sans-serif;
         text-align: center;
-        padding: 20px;
+        margin: 0;
+        padding: 0;
     }
-    .block {
+    .container {
+        width: 90%;
+        max-width: 1200px;
+        margin: auto;
+        padding-top: 20px;
+    }
+    h1 {
+        font-size: 40px;
+        margin-bottom: 10px;
+    }
+    h2 {
+        font-size: 32px;
+        margin: 20px 0 10px;
+    }
+    .band {
+        font-size: 32px;
         padding: 20px;
-        margin: 10px auto;
-        width: 80%;
+        margin: 10px 0;
         border-radius: 12px;
-        font-size: 2rem;
         font-weight: bold;
     }
-    .green { background: #1f8f3a; }
-    .amber { background: #c89d00; }
+    .green { background: #1f8f2e; }
+    .amber { background: #c89c00; }
     .red { background: #b30000; }
-    .title {
-        font-size: 2.5rem;
-        margin-top: 20px;
-        margin-bottom: 10px;
+    small {
+        font-size: 18px;
+        opacity: 0.9;
     }
 </style>
 </head>
-
 <body>
-    <div class="title">EDF FreePhase Dynamic</div>
-    <div class="title">West Midlands</div>
+    <div class="container">
+        <h1>EDF FreePhase Dynamic<br>West Midlands</h1>
 
-    <div style="margin-top: 40px; font-size: 2rem;">Today</div>
+        <section id="today-section">
+            <h2>Today</h2>
+            <div class="band green">Green <span id="today-green">Loading...</span><br><small id="today-green-time"></small></div>
+            <div class="band amber">Amber <span id="today-amber">Loading...</span><br><small id="today-amber-time"></small></div>
+            <div class="band red">Red <span id="today-red">Loading...</span><br><small id="today-red-time"></small></div>
+        </section>
 
-    <div id="today-green" class="block green">Loading...</div>
-    <div id="today-amber" class="block amber">Loading...</div>
-    <div id="today-red" class="block red">Loading...</div>
+        <section id="tomorrow-section">
+            <h2>Tomorrow</h2>
+            <div class="band green">Green <span id="tomorrow-green">Loading...</span><br><small id="tomorrow-green-time"></small></div>
+            <div class="band amber">Amber <span id="tomorrow-amber">Loading...</span><br><small id="tomorrow-amber-time"></small></div>
+            <div class="band red">Red <span id="tomorrow-red">Loading...</span><br><small id="tomorrow-red-time"></small></div>
+        </section>
+    </div>
 
-    <div style="margin-top: 60px; font-size: 2rem;">Tomorrow</div>
+    <script>
+        fetch('data.json?_=' + new Date().getTime())
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('today-green').textContent = data.today.green;
+                document.getElementById('today-amber').textContent = data.today.amber;
+                document.getElementById('today-red').textContent = data.today.red;
 
-    <div id="tom-green" class="block green">Loading...</div>
-    <div id="tom-amber" class="block amber">Loading...</div>
-    <div id="tom-red" class="block red">Loading...</div>
+                document.getElementById('tomorrow-green').textContent = data.tomorrow.green;
+                document.getElementById('tomorrow-amber').textContent = data.tomorrow.amber;
+                document.getElementById('tomorrow-red').textContent = data.tomorrow.red;
 
-<script>
-// load data.json from the same folder as this html file
-fetch("data.json")
-  .then(r => r.json())
-  .then(rates => {
-      document.getElementById("today-green").textContent =
-          "Green " + rates.today.green;
-      document.getElementById("today-amber").textContent =
-          "Amber " + rates.today.amber;
-      document.getElementById("today-red").textContent =
-          "Red " + rates.today.red;
+                document.getElementById('today-green-time').textContent = data.times.green;
+                document.getElementById('today-amber-time').textContent = data.times.amber.join(', ');
+                document.getElementById('today-red-time').textContent = data.times.red;
 
-      document.getElementById("tom-green").textContent =
-          "Green " + rates.tomorrow.green;
-      document.getElementById("tom-amber").textContent =
-          "Amber " + rates.tomorrow.amber;
-      document.getElementById("tom-red").textContent =
-          "Red " + rates.tomorrow.red;
-  })
-  .catch(err => {
-      console.error(err);
-      document.getElementById("today-green").textContent = "Error loading data";
-      document.getElementById("today-amber").textContent = "";
-      document.getElementById("today-red").textContent = "";
-  });
-</script>
-
+                document.getElementById('tomorrow-green-time').textContent = data.times.green;
+                document.getElementById('tomorrow-amber-time').textContent = data.times.amber.join(', ');
+                document.getElementById('tomorrow-red-time').textContent = data.times.red;
+            });
+    </script>
 </body>
 </html>
