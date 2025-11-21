@@ -24,20 +24,20 @@ jobs:
 
           API="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
 
-          TODAY=$(date -u +"%Y-%m-%dT00:00:00Z")
-          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%dT00:00:00Z")
-          DAY_AFTER=$(date -u -d "+2 days" +"%Y-%m-%dT00:00:00Z")
+          TODAY_DATE=$(date -u +"%Y-%m-%d")
+          TOMORROW_DATE=$(date -u -d "+1 day" +"%Y-%m-%d")
+          DAY_AFTER_DATE=$(date -u -d "+2 days" +"%Y-%m-%d")
 
-          # Fetch 48 hours so we have today + tomorrow bands
-          curl -s "${API}?period_from=${TODAY}&period_to=${DAY_AFTER}" > raw.json
+          PERIOD_FROM="${TODAY_DATE}T00:00:00Z"
+          PERIOD_TO="${DAY_AFTER_DATE}T23:59:59Z"
 
-          # Ensure response is valid JSON with results array
-          if ! jq -e '.results' raw.json > /dev/null 2>&1; then
-            echo "API error or malformed response"
+          curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
+
+          if ! jq -e '.results' raw.json >/dev/null 2>&1; then
+            echo "Invalid EDF response"
             exit 1
           fi
 
-          # Function to extract the lowest price interval in a time range
           extract_band() {
             local start=$1
             local end=$2
@@ -49,8 +49,8 @@ jobs:
               | if length == 0 then null else
                   .[0] | {
                     band:
-                      (if .value_inc_vat < 20 then "green"
-                       elif .value_inc_vat < 30 then "amber"
+                      (if .value_inc_vat < 0.20 then "green"
+                       elif .value_inc_vat < 0.30 then "amber"
                        else "red"
                       end),
                     price: (.value_inc_vat * 100),
@@ -61,25 +61,25 @@ jobs:
             ' raw.json
           }
 
-          # Today ranges (utc)
-          GREEN_T_START="${TODAY%Z}T23:00:00Z"
-          GREEN_T_END=$(date -u -d "${TODAY%Z}T23:00:00Z +7 hours" +"%Y-%m-%dT%H:%M:%SZ")
+          # Today bands
+          GREEN_T_START="${TODAY_DATE}T23:00:00Z"
+          GREEN_T_END="${TOMORROW_DATE}T06:00:00Z"
 
-          AMBER_T_START="${TODAY%Z}T06:00:00Z"
-          AMBER_T_END="${TODAY%Z}T16:00:00Z"
+          AMBER_T_START="${TODAY_DATE}T06:00:00Z"
+          AMBER_T_END="${TODAY_DATE}T16:00:00Z"
 
-          RED_T_START="${TODAY%Z}T16:00:00Z"
-          RED_T_END="${TODAY%Z}T19:00:00Z"
+          RED_T_START="${TODAY_DATE}T16:00:00Z"
+          RED_T_END="${TODAY_DATE}T19:00:00Z"
 
-          # Tomorrow ranges
-          GREEN_TM_START=$(date -u -d "$TOMORROW 23:00" +"%Y-%m-%dT%H:%M:%SZ")
-          GREEN_TM_END=$(date -u -d "$TOMORROW 23:00 +7 hours" +"%Y-%m-%dT%H:%M:%SZ")
+          # Tomorrow bands
+          GREEN_TM_START="${TOMORROW_DATE}T23:00:00Z"
+          GREEN_TM_END="${DAY_AFTER_DATE}T06:00:00Z"
 
-          AMBER_TM_START="${TOMORROW%Z}T06:00:00Z"
-          AMBER_TM_END="${TOMORROW%Z}T16:00:00Z"
+          AMBER_TM_START="${TOMORROW_DATE}T06:00:00Z"
+          AMBER_TM_END="${TOMORROW_DATE}T16:00:00Z"
 
-          RED_TM_START="${TOMORROW%Z}T16:00:00Z"
-          RED_TM_END="${TOMORROW%Z}T19:00:00Z"
+          RED_TM_START="${TOMORROW_DATE}T16:00:00Z"
+          RED_TM_END="${TOMORROW_DATE}T19:00:00Z"
 
           jq -n \
             --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
