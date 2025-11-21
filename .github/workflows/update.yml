@@ -1,24 +1,3 @@
-name: update freephase rates
-
-permissions:
-  contents: write
-
-on:
-  schedule:
-    - cron: "0 6 * * *"
-  workflow_dispatch:
-
-jobs:
-  update:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
       - name: Fetch EDF half-hourly and compute band averages
         run: |
           set -euo pipefail
@@ -35,34 +14,33 @@ jobs:
             def to_hhmm:
               (.[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M"));
 
-            def band(t):
-              if (t >= "23:00" or t < "06:00") then "green"
-              elif (t >= "06:00" and t < "16:00") then "amber"
-              elif (t >= "16:00" and t < "19:00") then "red"
-              else "amber"
-              end;
+            # band takes its input (.) as the time string
+            def band:
+              . as $t
+              | if   ($t >= "23:00" or $t < "06:00") then "green"
+                elif ($t >= "06:00" and $t < "16:00") then "amber"
+                elif ($t >= "16:00" and $t < "19:00") then "red"
+                else "amber"
+                end;
 
             def compute:
               .results
-              | map({ value: .value_inc_vat, t: (.valid_from | to_hhmm), b: (.valid_from | to_hhmm | band)} )
+              | map({
+                  value: .value_inc_vat,
+                  t: (.valid_from | to_hhmm),
+                  b: (.valid_from | to_hhmm | band)
+                })
               | group_by(.b)
               | map({ (.[0].b): (map(.value) | add / length) })
               | add;
 
             {
-              today: (input | compute),
-              tomorrow: (input | compute)
+              today:    ( input | compute | map_values(. as $v | ($v|tostring + " pence")) ),
+              tomorrow: ( input | compute | map_values(. as $v | ($v|tostring + " pence")) ),
+              times: {
+                green: "23:00–06:00",
+                amber: "06:00–16:00, 19:00–23:00",
+                red:   "16:00–19:00"
+              }
             }
           ' today.json tomorrow.json > data.json
-
-      - name: Commit updated data
-        run: |
-          git config user.name "auto-updater"
-          git config user.email "actions@github.com"
-          git add data.json
-          git commit -m "update freephase rates" || exit 0
-
-      - name: Push
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
