@@ -20,7 +20,7 @@ jobs:
       - name: Install jq
         run: sudo apt-get install jq -y
 
-      - name: Fetch EDF half-hourly and compute band prices
+      - name: Fetch EDF half-hourly and compute band rates
         run: |
           set -euo pipefail
 
@@ -37,36 +37,47 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
 
-          jq '
-            def hh: .[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M");
+          # Define jq logic
+          cat > calc.jq << 'EOF'
+          def band:
+            . as $t |
+            if   $t >= "23:00" or $t < "06:00" then "green"
+            elif $t >= "06:00" and $t < "16:00" then "amber"
+            elif $t >= "16:00" and $t < "19:00" then "red"
+            else "amber"
+            end;
 
-            def band($t):
-              if ($t >= "23:00" or $t < "06:00") then "green"
-              elif ($t >= "06:00" and $t < "16:00") then "amber"
-              elif ($t >= "16:00" and $t < "19:00") then "red"
-              else "amber" end;
+          def avg(v): (v | add) / (v | length);
 
-            def compute:
-              .results
-              | map({ b: ( .valid_from | hh | band ), v: .value_inc_vat })
-              | group_by(.b)
-              | map({ key: .[0].b, value: (map(.v) | add/length) })
-              | from_entries;
+          def process:
+            .results
+            | map({time: (.valid_from | sub("Z$"; "") | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M")),
+                   price: .value_inc_vat})
+            | group_by(.time | band)
+            | map({key: (.[0].time | band), value: (map(.price) | avg)})
+            | from_entries;
 
-            {
-              today: ( (input | compute) | map_values(. as $v | "\($v) pence") ),
-              tomorrow: ( (input | compute) | map_values(. as $v | "\($v) pence") )
+          {
+            today:    ( input     | process | map_values(. as $v | ($v|tostring + " pence")) ),
+            tomorrow: ( input     | process | map_values(. as $v | ($v|tostring + " pence")) ),
+            times: {
+              green: "23:00–06:00",
+              amber: "06:00–16:00, 19:00–23:00",
+              red:   "16:00–19:00"
             }
-          ' today.json tomorrow.json > data.json
+          }
+          EOF
+
+          jq -n --argfile t today.json --argfile n tomorrow.json \
+             'include "calc"; {today: ($t|process), tomorrow: ($n|process), times: {green:"23:00–06:00", amber:"06:00–16:00, 19:00–23:00", red:"16:00–19:00"}}' \
+             > data.json
 
       - name: Commit updated data
         run: |
           git config user.name "auto-updater"
           git config user.email "actions@github.com"
           git add data.json
-          git commit -m "update freephase rates" || echo "no changes"
+          git commit -m "update freephase rates" || true
 
       - name: Push
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        run: git push
