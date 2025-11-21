@@ -1,13 +1,12 @@
 {
   "today": {
-    "green": "… pence",
-    "amber": "… pence",
-    "red": "… pence"
+    "green": "16.4472 pence",
+    "amber": "16.674 pence",
+    "red": "24.55005 pence"
   },
   "tomorrow": {
-    "green": "… pence",
-    "amber": "… pence",
-    "red": "… pence"
+    "green": "16.4472 pence",
+    "amber": "18.19125 pence",
+    "red": "29.2971 pence"
   }
 }
-
