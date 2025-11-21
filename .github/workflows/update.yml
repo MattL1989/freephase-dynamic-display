@@ -18,9 +18,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install jq
-        run: sudo apt-get install -y jq
+        run: sudo apt-get install jq -y
 
-      - name: Fetch EDF half-hourly and compute band rates
+      - name: Fetch EDF half-hourly and compute band prices
         run: |
           set -euo pipefail
 
@@ -29,64 +29,44 @@ jobs:
 
           EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
 
-          # Fetch todays data
           curl -s -X POST "$EDF_URL" \
             -H "Content-Type: application/json" \
             -d "{\"date\":\"$TODAY\"}" > today.json
 
-          # Fetch tomorrows (may not exist yet)
           curl -s -X POST "$EDF_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json || true
+            -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
 
-          # Build jq program
-          cat > calc.jq << 'EOF'
-          def hour:
-            .[:13] | strptime("%Y-%m-%dT%H:%M") | strftime("%H:%M");
+          jq '
+            def hh: .[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M");
 
-          def band(t):
-            if   (t >= "23:00" or t < "06:00") then "green"
-            elif (t >= "06:00" and t < "16:00") then "amber"
-            elif (t >= "16:00" and t < "19:00") then "red"
-            else "amber"
-            end;
+            def band($t):
+              if ($t >= "23:00" or $t < "06:00") then "green"
+              elif ($t >= "06:00" and $t < "16:00") then "amber"
+              elif ($t >= "16:00" and $t < "19:00") then "red"
+              else "amber" end;
 
-          def compute:
-            if (.results | length == 0) then
-              { green:"N/A", amber:"N/A", red:"N/A" }
-            else
+            def compute:
               .results
-              | map({ band: ( .valid_from | hour | band ), price: .value_inc_vat })
-              | group_by(.band)
-              | map({ key: .[0].band, value:(map(.price)|add/length|tostring + " pence") })
-              | from_entries
-            end;
+              | map({ b: ( .valid_from | hh | band ), v: .value_inc_vat })
+              | group_by(.b)
+              | map({ key: .[0].b, value: (map(.v) | add/length) })
+              | from_entries;
 
-          {
-            today:    (input | compute),
-            tomorrow: (input | compute),
-            times: {
-              green: "23:00–06:00",
-              amber: "06:00–16:00, 19:00–23:00",
-              red:   "16:00–19:00"
+            {
+              today: ( (input | compute) | map_values(. as $v | "\($v) pence") ),
+              tomorrow: ( (input | compute) | map_values(. as $v | "\($v) pence") )
             }
-          }
-          EOF
-
-          jq -n --slurpfile t today.json --slurpfile n tomorrow.json \
-              ' {today: ($t[0] | compute), tomorrow: ($n[0] | compute), times:{
-                  green:"23:00–06:00",
-                  amber:"06:00–16:00, 19:00–23:00",
-                  red:"16:00–19:00"
-                }} ' calc.jq > data.json
+          ' today.json tomorrow.json > data.json
 
       - name: Commit updated data
         run: |
-          git config user.name "github-actions"
+          git config user.name "auto-updater"
           git config user.email "actions@github.com"
           git add data.json
-          git commit -m "update freephase rates" || echo "No changes"
-      
-      - name: Push
-        run: git push
+          git commit -m "update freephase rates" || echo "no changes"
 
+      - name: Push
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
