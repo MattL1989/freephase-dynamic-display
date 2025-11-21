@@ -20,44 +20,65 @@ jobs:
       - name: install jq
         run: sudo apt-get install jq -y
 
-      - name: fetch EDF half-hourly data and compute band prices
+      - name: fetch from Kraken and compute correct EDF bands
         run: |
           set -euo pipefail
 
           TODAY=$(date -u +"%Y-%m-%d")
           TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
 
-          EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
+          KR="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates"
 
-          curl -s -X POST "$EDF_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"date\":\"$TODAY\"}" > today.json
+          curl -s "${KR}?page_size=96&period_from=${TODAY}T00:00Z&period_to=${TODAY}T23:59Z" > today.json
+          curl -s "${KR}?page_size=96&period_from=${TOMORROW}T00:00Z&period_to=${TOMORROW}T23:59Z" > tomorrow.json
 
-          curl -s -X POST "$EDF_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
+          # Write jq logic
+          cat > calc.jq << 'EOF'
+          def to_local_time:
+            (.[:-1]
+            | strptime("%Y-%m-%dT%H:%M:%S")
+            | mktime
+            | strftime("%H:%M")
+            );
 
-          # Create jq band function
-          cat > bandcalc.jq << 'EOF'
-          def to_local:
-            (.[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M"))
-            ;
+          # EDF official band times (local)
+          # green: 23:00-06:00
+          # red:   16:00-19:00
+          # amber: everything else
 
           def band($t):
-            if ($t >= "23:00" or $t < "06:00") then "green"
-            elif ($t >= "06:00" and $t < "16:00") then "amber"
+            if   ($t >= "23:00" or $t < "06:00") then "green"
             elif ($t >= "16:00" and $t < "19:00") then "red"
             else "amber"
             end;
 
           def compute:
             .results
-            | map({val: .value_inc_vat, t: (.valid_from | to_local)})
+            | map({val: .value_inc_vat, t: (.valid_from | to_local_time)})
             | group_by(.t | band(.))
-            | map({ (.[0].t | band(.)): (map(.val) | add / length) })
+            | map({
+                (.[0].t | band(.)):
+                (map(.val) | add / length | (. * 100 | round / 100)) # round to 2dp
+              })
             | add;
 
           {
-            today:    ( (input | compute) | to_entries | map({key, value: (.value | tostring + " pence")}) | from_entries ),
-            tomorrow: ( (input | compute) | to_entries | map({key, value: (.value | tostring + " pence")}) | from_entries ),
-            times:
+            today: (input | compute | to_entries | map({key, value: (.value|tostring + " pence")}) | from_entries),
+            tomorrow: (input | compute | to_entries | map({key, value: (.value|tostring + " pence")}) | from_entries),
+            times: {
+              green: "11pm–6am",
+              amber: ["6am–4pm", "7pm–11pm"],
+              red: "4pm–7pm"
+            }
+          }
+          EOF
+
+          jq -n --slurpfile a today.json --slurpfile b tomorrow.json -f calc.jq > data.json
+
+      - name: commit updated data
+        run: |
+          git config user.name "auto-updater"
+          git config user.email "action@github.com"
+          git add data.json
+          git commit -m "update freephase rates" || echo "no changes"
+          git push
