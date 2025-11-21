@@ -1,72 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>EDF FreePhase Dynamic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body {
-    background: #111;
-    color: white;
-    font-family: Arial, sans-serif;
-    text-align: center;
-  }
-  h1 { font-size: 48px; }
-  h2 { font-size: 36px; }
-
-  .band {
-    width: 90%;
-    margin: 20px auto;
-    padding: 25px;
-    border-radius: 12px;
-    font-size: 40px;
-    font-weight: bold;
-  }
-  .green  { background: #138a36; }
-  .amber  { background: #cfa600; }
-  .red    { background: #a00000; }
-  .time   { font-size: 24px; margin-top: 8px; opacity: .8; }
+    body {
+        background: #111;
+        color: white;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+    }
+    h1 { font-size: 48px; margin-top: 10px; }
+    h2 { font-size: 32px; margin-top: 40px; }
+    .band {
+        width: 90%;
+        margin: 20px auto;
+        padding: 25px;
+        border-radius: 12px;
+        font-size: 32px;
+        font-weight: bold;
+    }
+    .green { background: #158638; }
+    .amber { background: #caa500; }
+    .red   { background: #b00000; }
+    .small {
+        font-size: 22px;
+        opacity: 0.8;
+        margin-top: 8px;
+    }
 </style>
 </head>
-
 <body>
 
 <h1>West Midlands</h1>
+
 <h2>Today</h2>
-
-<div id="today-green"  class="band green"></div>
-<div class="time">23:00–06:00</div>
-
-<div id="today-amber"  class="band amber"></div>
-<div class="time">06:00–16:00 & 19:00–23:00</div>
-
-<div id="today-red"    class="band red"></div>
-<div class="time">16:00–19:00</div>
-
-<br><br>
+<div class="band green" id="today-green"></div>
+<div class="band amber" id="today-amber"></div>
+<div class="band red" id="today-red"></div>
 
 <h2>Tomorrow</h2>
-
-<div id="tomorrow-green"  class="band green"></div>
-<div class="time">23:00–06:00</div>
-
-<div id="tomorrow-amber"  class="band amber"></div>
-<div class="time">06:00–16:00 & 19:00–23:00</div>
-
-<div id="tomorrow-red"    class="band red"></div>
-<div class="time">16:00–19:00</div>
+<div class="band green" id="tomorrow-green"></div>
+<div class="band amber" id="tomorrow-amber"></div>
+<div class="band red" id="tomorrow-red"></div>
 
 <script>
-fetch("data.json?cache=" + Date.now())
-  .then(r => r.json())
-  .then(d => {
-    document.getElementById("today-green").innerHTML     = d.today.green;
-    document.getElementById("today-amber").innerHTML     = d.today.amber;
-    document.getElementById("today-red").innerHTML       = d.today.red;
+fetch("data.json?_=" + Date.now())
+    .then(r => r.json())
+    .then(data => {
 
-    document.getElementById("tomorrow-green").innerHTML   = d.tomorrow.green;
-    document.getElementById("tomorrow-amber").innerHTML   = d.tomorrow.amber;
-    document.getElementById("tomorrow-red").innerHTML     = d.tomorrow.red;
-  });
+        const t = data.today;
+        const n = data.tomorrow;
+        const times = data.times;
+
+        document.getElementById("today-green").innerHTML =
+            `${t.green}<div class="small">${times.green}</div>`;
+
+        document.getElementById("today-amber").innerHTML =
+            `${t.amber}<div class="small">${times.amber}</div>`;
+
+        document.getElementById("today-red").innerHTML =
+            `${t.red}<div class="small">${times.red}</div>`;
+
+        document.getElementById("tomorrow-green").innerHTML =
+            `${n.green}<div class="small">${times.green}</div>`;
+
+        document.getElementById("tomorrow-amber").innerHTML =
+            `${n.amber}<div class="small">${times.amber}</div>`;
+
+        document.getElementById("tomorrow-red").innerHTML =
+            `${n.red}<div class="small">${times.red}</div>`;
+    });
 </script>
 
 </body>
