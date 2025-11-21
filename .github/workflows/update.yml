@@ -13,59 +13,51 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: fetch today and tomorrow from kraken
+      - name: install jq
+        run: sudo apt-get install jq -y
+
+      - name: fetch EDF half-hourly data and compute band prices
         run: |
           set -euo pipefail
 
           TODAY=$(date -u +"%Y-%m-%d")
           TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
 
-          BASE="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
+          EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
 
-          echo "Fetching today prices..."
-          curl -s "${BASE}?page_size=96&period_from=${TODAY}T00:00Z&period_to=${TODAY}T23:59Z" > today_raw.json
+          curl -s -X POST "$EDF_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"date\":\"$TODAY\"}" > today.json
 
-          echo "Fetching tomorrow prices..."
-          curl -s "${BASE}?page_size=96&period_from=${TOMORROW}T00:00Z&period_to=${TOMORROW}T23:59Z" > tomorrow_raw.json
+          curl -s -X POST "$EDF_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
 
-          echo "First part of today_raw.json:"
-          head -c 400 today_raw.json || true
-          echo
-          echo "First part of tomorrow_raw.json:"
-          head -c 400 tomorrow_raw.json || true
-          echo
+          # Create jq band function
+          cat > bandcalc.jq << 'EOF'
+          def to_local:
+            (.[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M"))
+            ;
 
-          jq -s '
+          def band($t):
+            if ($t >= "23:00" or $t < "06:00") then "green"
+            elif ($t >= "06:00" and $t < "16:00") then "amber"
+            elif ($t >= "16:00" and $t < "19:00") then "red"
+            else "amber"
+            end;
+
+          def compute:
+            .results
+            | map({val: .value_inc_vat, t: (.valid_from | to_local)})
+            | group_by(.t | band(.))
+            | map({ (.[0].t | band(.)): (map(.val) | add / length) })
+            | add;
+
           {
-            today:
-              (.[0].results
-               | map(.value_inc_vat)
-               | unique
-               | sort
-               | {green: (.[0] | tostring + " pence"),
-                  amber: (.[1] | tostring + " pence"),
-                  red:   (.[2] | tostring + " pence")}),
-
-            tomorrow:
-              (.[1].results
-               | map(.value_inc_vat)
-               | unique
-               | sort
-               | {green: (.[0] | tostring + " pence"),
-                  amber: (.[1] | tostring + " pence"),
-                  red:   (.[2] | tostring + " pence")})
-          }' today_raw.json tomorrow_raw.json > data.json
-
-          echo "Built data.json:"
-          cat data.json
-
-      - name: commit updated data
-        run: |
-          git config user.name "auto-updater"
-          git config user.email "action@github.com"
-          git add data.json
-          git commit -m "update freephase rates" || echo "no changes"
-          git push
+            today:    ( (input | compute) | to_entries | map({key, value: (.value | tostring + " pence")}) | from_entries ),
+            tomorrow: ( (input | compute) | to_entries | map({key, value: (.value | tostring + " pence")}) | from_entries ),
+            times:
