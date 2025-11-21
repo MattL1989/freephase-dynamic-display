@@ -2,52 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<title>EDF FreePhase Dynamic</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FreePhase Dynamic</title>
-
 <style>
     body {
         background: #111;
         color: white;
-        font-family: Arial, Helvetica, sans-serif;
+        font-family: Arial, sans-serif;
         text-align: center;
-        margin: 0;
-        padding: 0;
+        padding: 20px;
     }
-
-    h1 {
-        font-size: 3rem;
-        margin-top: 30px;
-        margin-bottom: 10px;
-    }
-
-    h2 {
-        font-size: 2.2rem;
-        margin-top: 40px;
-        margin-bottom: 20px;
-    }
-
+    h1 { font-size: 48px; margin-top: 10px; }
+    h2 { font-size: 32px; margin-top: 40px; }
     .band {
         width: 90%;
-        margin: 15px auto;
+        margin: 20px auto;
         padding: 25px;
         border-radius: 12px;
-        font-size: 2rem;
+        font-size: 32px;
         font-weight: bold;
     }
-
-    .green {
-        background: #1e8c3a;
+    .green { background: #158638; }
+    .amber { background: #caa500; }
+    .red   { background: #b00000; }
+    .small {
+        font-size: 22px;
+        opacity: 0.8;
+        margin-top: 8px;
     }
-
-    .amber {
-        background: #c79b00;
-    }
-
-    .red {
-        background: #b30000;
-    }
-
 </style>
 </head>
 <body>
@@ -55,62 +37,26 @@
 <h1>West Midlands</h1>
 
 <h2>Today</h2>
-
-<div class="band green">
-    <span id="today-green"></span>
-</div>
-
-<div class="band amber">
-    <span id="today-amber"></span>
-</div>
-
-<div class="band red">
-    <span id="today-red"></span>
-</div>
+<div class="band green" id="today-green"></div>
+<div class="band amber" id="today-amber"></div>
+<div class="band red" id="today-red"></div>
 
 <h2>Tomorrow</h2>
-
-<div class="band green">
-    <span id="tomorrow-green"></span>
-</div>
-
-<div class="band amber">
-    <span id="tomorrow-amber"></span>
-</div>
-
-<div class="band red">
-    <span id="tomorrow-red"></span>
-</div>
+<div class="band green" id="tomorrow-green"></div>
+<div class="band amber" id="tomorrow-amber"></div>
+<div class="band red" id="tomorrow-red"></div>
 
 <script>
-fetch("data.json")
-  .then(r => r.json())
-  .then(data => {
-    const today = data.today;
-    const tomorrow = data.tomorrow;
-    const times = data.times;
+fetch("data.json?_=" + Date.now())
+    .then(r => r.json())
+    .then(data => {
 
-    // Today
-    document.getElementById("today-green").textContent =
-      `${today.green} — ${times.green}`;
+        const t = data.today;
+        const n = data.tomorrow;
+        const times = data.times;
 
-    document.getElementById("today-amber").textContent =
-      `${today.amber} — ${times.amber}`;
+        document.getElementById("today-green").innerHTML =
+            `${t.green}<div class="small">${times.green}</div>`;
 
-    document.getElementById("today-red").textContent =
-      `${today.red} — ${times.red}`;
-
-    // Tomorrow
-    document.getElementById("tomorrow-green").textContent =
-      `${tomorrow.green} — ${times.green}`;
-
-    document.getElementById("tomorrow-amber").textContent =
-      `${tomorrow.amber} — ${times.amber}`;
-
-    document.getElementById("tomorrow-red").textContent =
-      `${tomorrow.red} — ${times.red}`;
-  });
-</script>
-
-</body>
-</html>
+        document.getElementById("today-amber").innerHTML =
+            `${t.amber}<div class="small">${
