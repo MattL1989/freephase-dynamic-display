@@ -30,4 +30,63 @@ jobs:
           EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
 
           # Fetch todays data
-          curl -s -X POST "$EDF_URL_
+          curl -s -X POST "$EDF_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"date\":\"$TODAY\"}" > today.json
+
+          # Fetch tomorrows (may not exist yet)
+          curl -s -X POST "$EDF_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json || true
+
+          # Build jq program
+          cat > calc.jq << 'EOF'
+          def hour:
+            .[:13] | strptime("%Y-%m-%dT%H:%M") | strftime("%H:%M");
+
+          def band(t):
+            if   (t >= "23:00" or t < "06:00") then "green"
+            elif (t >= "06:00" and t < "16:00") then "amber"
+            elif (t >= "16:00" and t < "19:00") then "red"
+            else "amber"
+            end;
+
+          def compute:
+            if (.results | length == 0) then
+              { green:"N/A", amber:"N/A", red:"N/A" }
+            else
+              .results
+              | map({ band: ( .valid_from | hour | band ), price: .value_inc_vat })
+              | group_by(.band)
+              | map({ key: .[0].band, value:(map(.price)|add/length|tostring + " pence") })
+              | from_entries
+            end;
+
+          {
+            today:    (input | compute),
+            tomorrow: (input | compute),
+            times: {
+              green: "23:00–06:00",
+              amber: "06:00–16:00, 19:00–23:00",
+              red:   "16:00–19:00"
+            }
+          }
+          EOF
+
+          jq -n --slurpfile t today.json --slurpfile n tomorrow.json \
+              ' {today: ($t[0] | compute), tomorrow: ($n[0] | compute), times:{
+                  green:"23:00–06:00",
+                  amber:"06:00–16:00, 19:00–23:00",
+                  red:"16:00–19:00"
+                }} ' calc.jq > data.json
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data.json
+          git commit -m "update freephase rates" || echo "No changes"
+      
+      - name: Push
+        run: git push
+
