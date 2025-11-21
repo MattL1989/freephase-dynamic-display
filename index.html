@@ -1,31 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF 8">
+<meta charset="UTF-8">
 <title>FreePhase Dynamic West Midlands</title>
 <style>
     body {
-        font family: Arial;
+        font-family: Arial, sans-serif;
         background: #111;
         color: white;
-        text align: center;
+        text-align: center;
         padding: 20px;
     }
     .block {
         padding: 20px;
         margin: 10px auto;
-        width: 80 percent;
-        border radius: 12px;
-        font size: 2rem;
-        font weight: bold;
+        width: 80%;
+        border-radius: 12px;
+        font-size: 2rem;
+        font-weight: bold;
     }
     .green { background: #1f8f3a; }
     .amber { background: #c89d00; }
     .red { background: #b30000; }
     .title {
-        font size: 2.5rem;
-        margin top: 20px;
-        margin bottom: 10px;
+        font-size: 2.5rem;
+        margin-top: 20px;
+        margin-bottom: 10px;
     }
 </style>
 </head>
@@ -34,30 +34,43 @@
     <div class="title">FreePhase Dynamic</div>
     <div class="title">West Midlands</div>
 
-    <div style="margin top: 40px; font size: 2rem;">Today</div>
+    <div style="margin-top: 40px; font-size: 2rem;">Today</div>
 
-    <div id="today green" class="block green">Loading...</div>
-    <div id="today amber" class="block amber">Loading...</div>
-    <div id="today red" class="block red">Loading...</div>
+    <div id="today-green" class="block green">Loading...</div>
+    <div id="today-amber" class="block amber">Loading...</div>
+    <div id="today-red" class="block red">Loading...</div>
 
-    <div style="margin top: 60px; font size: 2rem;">Tomorrow</div>
+    <div style="margin-top: 60px; font-size: 2rem;">Tomorrow</div>
 
-    <div id="tom green" class="block green">Loading...</div>
-    <div id="tom amber" class="block amber">Loading...</div>
-    <div id="tom red" class="block red">Loading...</div>
+    <div id="tom-green" class="block green">Loading...</div>
+    <div id="tom-amber" class="block amber">Loading...</div>
+    <div id="tom-red" class="block red">Loading...</div>
 
 <script>
-fetch("https://MattL1989.github.io/freephase dynamic display/data.json")
-    .then(r => r.json())
-    .then(rates => {
-        document.getElementById("today green").textContent = "Green " + rates.today.green;
-        document.getElementById("today amber").textContent = "Amber " + rates.today.amber;
-        document.getElementById("today red").textContent = "Red " + rates.today.red;
+// load data.json from the same folder as this html file
+fetch("data.json")
+  .then(r => r.json())
+  .then(rates => {
+      document.getElementById("today-green").textContent =
+          "Green " + rates.today.green;
+      document.getElementById("today-amber").textContent =
+          "Amber " + rates.today.amber;
+      document.getElementById("today-red").textContent =
+          "Red " + rates.today.red;
 
-        document.getElementById("tom green").textContent = "Green " + rates.tomorrow.green;
-        document.getElementById("tom amber").textContent = "Amber " + rates.tomorrow.amber;
-        document.getElementById("tom red").textContent = "Red " + rates.tomorrow.red;
-    });
+      document.getElementById("tom-green").textContent =
+          "Green " + rates.tomorrow.green;
+      document.getElementById("tom-amber").textContent =
+          "Amber " + rates.tomorrow.amber;
+      document.getElementById("tom-red").textContent =
+          "Red " + rates.tomorrow.red;
+  })
+  .catch(err => {
+      console.error(err);
+      document.getElementById("today-green").textContent = "Error loading data";
+      document.getElementById("today-amber").textContent = "";
+      document.getElementById("today-red").textContent = "";
+  });
 </script>
 
 </body>
