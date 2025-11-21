@@ -1,12 +1,4 @@
 {
-    "today": {
-        "green": "unknown",
-        "amber": "unknown",
-        "red": "unknown"
-    },
-    "tomorrow": {
-        "green": "unknown",
-        "amber": "unknown",
-        "red": "unknown"
-    }
+  "today":   { "green": "16.8 pence", "amber": "25.1 pence", "red": "41.2 pence" },
+  "tomorrow":{ "green": "18.6 pence", "amber": "31.6 pence", "red": "41.2 pence" }
 }
