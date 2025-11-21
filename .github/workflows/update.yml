@@ -1,0 +1,91 @@
+name: update freephase rates
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: fetch today and tomorrow from edf
+        run: |
+          # Dates in UTC
+          TODAY=$(date -u +"%Y-%m-%d")
+          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
+
+          # Common fields
+          REGION="E"
+          PRODUCT="EDF_FREEPHASE_DYNAMIC_12M_HH"
+          SESSION="github-action"
+
+          # Build request bodies with jq to ensure valid json
+          BODY_TODAY=$(jq -n \
+            --arg region "$REGION" \
+            --arg product "$PRODUCT" \
+            --arg from "${TODAY}T00:00:00.000Z" \
+            --arg to   "${TODAY}T23:30:00.000Z" \
+            --arg sid  "$SESSION" \
+            '{region:$region,productCode:$product,periodFrom:$from,periodTo:$to,sessionId:$sid}')
+
+          BODY_TOMORROW=$(jq -n \
+            --arg region "$REGION" \
+            --arg product "$PRODUCT" \
+            --arg from "${TOMORROW}T00:00:00.000Z" \
+            --arg to   "${TOMORROW}T23:30:00.000Z" \
+            --arg sid  "$SESSION" \
+            '{region:$region,productCode:$product,periodFrom:$from,periodTo:$to,sessionId:$sid}')
+
+          # Call EDF endpoint for today
+          curl -s \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$BODY_TODAY" \
+            "https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates" \
+            > today.json
+
+          # Call EDF endpoint for tomorrow
+          curl -s \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$BODY_TOMORROW" \
+            "https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates" \
+            > tomorrow.json
+
+          # Build data.json with three band prices per day
+          # Assumes exactly three distinct prices per day
+          jq -s '
+            {
+              today:
+                (.[0].results
+                 | map(.value_inc_vat)
+                 | unique
+                 | sort
+                 | {green: (.[0]|tostring + " pence"),
+                    amber: (.[1]|tostring + " pence"),
+                    red:   (.[2]|tostring + " pence")}),
+
+              tomorrow:
+                (.[1].results
+                 | map(.value_inc_vat)
+                 | unique
+                 | sort
+                 | {green: (.[0]|tostring + " pence"),
+                    amber: (.[1]|tostring + " pence"),
+                    red:   (.[2]|tostring + " pence")})
+            }' today.json tomorrow.json > data.json
+
+          cat data.json
+
+      - name: commit updated data
+        run: |
+          git config user.name "auto-updater"
+          git config user.email "action@github.com"
+          git add data.json
+          git commit -m "update freephase rates" || echo "no changes"
+          git push
