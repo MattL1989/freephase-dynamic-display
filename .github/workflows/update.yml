@@ -53,7 +53,7 @@ jobs:
                        elif .value_inc_vat < 0.30 then "amber"
                        else "red"
                       end),
-                    price: (.value_inc_vat * 100),
+                    price: (.value_inc_vat),
                     start: .valid_from,
                     end: .valid_to
                   }
