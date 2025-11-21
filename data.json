@@ -1,0 +1,12 @@
+{
+    "today": {
+        "green": "unknown",
+        "amber": "unknown",
+        "red": "unknown"
+    },
+    "tomorrow": {
+        "green": "unknown",
+        "amber": "unknown",
+        "red": "unknown"
+    }
+}
