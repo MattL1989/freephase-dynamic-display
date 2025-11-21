@@ -13,13 +13,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: checkout
+
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: install jq
-        run: sudo apt-get install jq -y
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
-      - name: fetch EDF half-hourly and compute exact band prices
+      - name: Fetch EDF half-hourly and compute band rates
         run: |
           set -euo pipefail
 
@@ -28,46 +29,5 @@ jobs:
 
           EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
 
-          curl -s -X POST "$EDF_URL" -H "Content-Type: application/json" -d "{\"date\":\"$TODAY\"}" > today.json
-          curl -s -X POST "$EDF_URL" -H "Content-Type: application/json" -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
-
-          jq --arg green_from "23:00" --arg green_to "06:00" \
-             --arg amber1_from "06:00" --arg amber1_to "16:00" \
-             --arg red_from "16:00"   --arg red_to   "19:00" \
-             --arg amber2_from "19:00" --arg amber2_to "23:00" \
-             '
-             def local_t:
-               (.[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M"));
-
-             def band:
-               if (. >= $green_from or . < $green_to) then "green"
-               elif (. >= $amber1_from and . < $amber1_to) then "amber"
-               elif (. >= $red_from and . < $red_to) then "red"
-               elif (. >= $amber2_from and . < $amber2_to) then "amber"
-               else "amber" end;
-
-             def compute:
-               .results
-               | map({band: ( .valid_from | local_t | band ),
-                      val: .value_inc_vat})
-               | group_by(.band)
-               | map({ key: .[0].band, value: (map(.val) | add / length) })
-               | from_entries;
-
-             {
-               today: ( (input | compute) | map_values(. as $v | "\($v) pence") ),
-               tomorrow: ( (input | compute) | map_values(. as $v | "\($v) pence") )
-             }
-             ' today.json tomorrow.json > data.json
-
-      - name: commit updated data
-        run: |
-          git config user.name "auto-updater"
-          git config user.email "actions@github.com"
-          git add data.json
-          git commit -m "update freephase rates" || echo "No changes to commit"
-
-      - name: push
-        uses: ad-m/github-push-action@v0.8.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Fetch todays data
+          curl -s -X POST "$EDF_URL_
