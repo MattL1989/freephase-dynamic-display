@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install jq
-        run: sudo apt-get install -y jq
+        run: sudo apt-get install jq -y
 
       - name: Fetch EDF half-hourly and compute band averages
         run: |
@@ -27,62 +27,64 @@ jobs:
           TODAY=$(date -u +"%Y-%m-%d")
           TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
 
-          URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
+          EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
 
-          curl -s -X POST "$URL" \
+          # Fetch today
+          curl -s -X POST "$EDF_URL" \
             -H "Content-Type: application/json" \
             -d "{\"date\":\"$TODAY\"}" > today.json
 
-          curl -s -X POST "$URL" \
+          # Fetch tomorrow (may be null early morning)
+          curl -s -X POST "$EDF_URL" \
             -H "Content-Type: application/json" \
             -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
 
-          # Build jq script
+          # JQ program
           cat > calc.jq << 'EOF'
-          def to_hhmm:
-            (.[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M"));
+          def to_hhmm:    # convert ISO time to HH:MM
+            ( .[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | strftime("%H:%M") );
 
-          # band filter (jq-1.5 compatible)
-          def band:
-            . as $t
-            | if   ($t >= "23:00" or $t < "06:00") then "green"
-              elif ($t >= "06:00" and $t < "16:00") then "amber"
-              elif ($t >= "16:00" and $t < "19:00") then "red"
-              else "amber"
-              end;
+          def band($t):   # classify EDF band
+            if ($t >= "23:00" or $t < "06:00") then "green"
+            elif ($t >= "06:00" and $t < "16:00") then "amber"
+            elif ($t >= "16:00" and $t < "19:00") then "red"
+            else "amber"
+            end;
 
           def compute:
-            .results
-            | map({
-                value: .value_inc_vat,
-                t: (.valid_from | to_hhmm),
-                b: (.valid_from | to_hhmm | band)
-              })
-            | group_by(.b)
-            | map({ (.[0].b): (map(.value) | add / length) })
-            | add;
-
-          # top-level output structure
+            if (.results | length == 0) then
+              { green: null, amber: null, red: null }
+            else
+              .results
+              | map({val: .value_inc_vat, t: (.valid_from | to_hhmm), b: (.valid_from | to_hhmm | band)})
+              | group_by(.b)
+              | map({ (.[0].b): (map(.val) | add / length) })
+              | add
+            end;
+          
           {
-            today:    ( input | compute | map_values((tostring + " pence")) ),
-            tomorrow: ( input | compute | map_values((tostring + " pence")) ),
+            today:    (input | compute),
+            tomorrow: (input | compute),
             times: {
-              green:  "23:00–06:00",
-              amber:  "06:00–16:00, 19:00–23:00",
-              red:    "16:00–19:00"
+              green: "23:00–06:00",
+              amber: "06:00–16:00, 19:00–23:00",
+              red:   "16:00–19:00"
             }
           }
           EOF
 
-          # Run jq with both input files (today.json, tomorrow.json)
-          jq -f calc.jq today.json tomorrow.json > data.json
+          jq -n \
+            --argfile t today.json \
+            --argfile n tomorrow.json \
+            -f calc.jq \
+            > data.json
 
       - name: Commit updated data
         run: |
-          git config user.name "auto-updater"
+          git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add data.json
-          git commit -m "update freephase rates" || exit 0
+          git commit -m "update freephase rates" || echo "No changes to commit"
 
       - name: Push
         uses: ad-m/github-push-action@v0.8.0
