@@ -1,12 +1,17 @@
 {
   "today": {
-    "green": "16.4472 pence",
-    "amber": "16.674 pence",
-    "red": "24.55005 pence"
+    "green": "loading…",
+    "amber": "loading…",
+    "red": "loading…"
   },
   "tomorrow": {
-    "green": "16.4472 pence",
-    "amber": "18.19125 pence",
-    "red": "29.2971 pence"
+    "green": "loading…",
+    "amber": "loading…",
+    "red": "loading…"
+  },
+  "times": {
+    "green": "23:00–06:00",
+    "amber": "06:00–16:00, 19:00–23:00",
+    "red": "16:00–19:00"
   }
 }
