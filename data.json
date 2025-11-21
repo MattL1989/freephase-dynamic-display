@@ -1,12 +1,17 @@
 {
   "today": {
-    "green": 0,
-    "amber": 0,
-    "red": 0
+    "green": "… pence",
+    "amber": "… pence",
+    "red": "… pence"
   },
   "tomorrow": {
-    "green": 0,
-    "amber": 0,
-    "red": 0
+    "green": "… pence",
+    "amber": "… pence",
+    "red": "… pence"
+  },
+  "times": {
+    "green": "23:00–06:00",
+    "amber": "06:00–16:00, 19:00–23:00",
+    "red": "16:00–19:00"
   }
 }
