@@ -13,72 +13,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: checkout
         uses: actions/checkout@v4
 
       - name: install jq
         run: sudo apt-get install jq -y
 
-      - name: fetch from Kraken and compute correct EDF bands
+      - name: fetch EDF half-hourly and compute exact band prices
         run: |
           set -euo pipefail
 
           TODAY=$(date -u +"%Y-%m-%d")
           TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
 
-          KR="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates"
+          EDF_URL="https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates"
 
-          curl -s "${KR}?page_size=96&period_from=${TODAY}T00:00Z&period_to=${TODAY}T23:59Z" > today.json
-          curl -s "${KR}?page_size=96&period_from=${TOMORROW}T00:00Z&period_to=${TOMORROW}T23:59Z" > tomorrow.json
+          curl -s -X POST "$EDF_URL" -H "Content-Type: application/json" -d "{\"date\":\"$TODAY\"}" > today.json
+          curl -s -X POST "$EDF_URL" -H "Content-Type: application/json" -d "{\"date\":\"$TOMORROW\"}" > tomorrow.json
 
-          # Write jq logic
-          cat > calc.jq << 'EOF'
-          def to_local_time:
-            (.[:-1]
-            | strptime("%Y-%m-%dT%H:%M:%S")
-            | mktime
-            | strftime("%H:%M")
-            );
+          jq --arg green_from "23:00" --arg green_to "06:00" \
+             --arg amber1_from "06:00" --arg amber1_to "16:00" \
+             --arg red_from "16:00"   --arg red_to   "19:00" \
+             --arg amber2_from "19:00" --arg amber2_to "23:00" \
+             '
+             def local_t:
+               (.[:-1] | strptime("%Y-%m-%dT%H:%M:%S") | mktime | strftime("%H:%M"));
 
-          # EDF official band times (local)
-          # green: 23:00-06:00
-          # red:   16:00-19:00
-          # amber: everything else
+             def band:
+               if (. >= $green_from or . < $green_to) then "green"
+               elif (. >= $amber1_from and . < $amber1_to) then "amber"
+               elif (. >= $red_from and . < $red_to) then "red"
+               elif (. >= $amber2_from and . < $amber2_to) then "amber"
+               else "amber" end;
 
-          def band($t):
-            if   ($t >= "23:00" or $t < "06:00") then "green"
-            elif ($t >= "16:00" and $t < "19:00") then "red"
-            else "amber"
-            end;
+             def compute:
+               .results
+               | map({band: ( .valid_from | local_t | band ),
+                      val: .value_inc_vat})
+               | group_by(.band)
+               | map({ key: .[0].band, value: (map(.val) | add / length) })
+               | from_entries;
 
-          def compute:
-            .results
-            | map({val: .value_inc_vat, t: (.valid_from | to_local_time)})
-            | group_by(.t | band(.))
-            | map({
-                (.[0].t | band(.)):
-                (map(.val) | add / length | (. * 100 | round / 100)) # round to 2dp
-              })
-            | add;
-
-          {
-            today: (input | compute | to_entries | map({key, value: (.value|tostring + " pence")}) | from_entries),
-            tomorrow: (input | compute | to_entries | map({key, value: (.value|tostring + " pence")}) | from_entries),
-            times: {
-              green: "11pm–6am",
-              amber: ["6am–4pm", "7pm–11pm"],
-              red: "4pm–7pm"
-            }
-          }
-          EOF
-
-          jq -n --slurpfile a today.json --slurpfile b tomorrow.json -f calc.jq > data.json
+             {
+               today: ( (input | compute) | map_values(. as $v | "\($v) pence") ),
+               tomorrow: ( (input | compute) | map_values(. as $v | "\($v) pence") )
+             }
+             ' today.json tomorrow.json > data.json
 
       - name: commit updated data
         run: |
           git config user.name "auto-updater"
-          git config user.email "action@github.com"
+          git config user.email "actions@github.com"
           git add data.json
-          git commit -m "update freephase rates" || echo "no changes"
-          git push
+          git commit -m "update freephase rates" || echo "No changes to commit"
+
+      - name: push
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
