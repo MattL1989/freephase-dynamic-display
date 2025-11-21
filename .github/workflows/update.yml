@@ -39,27 +39,31 @@ jobs:
           fi
 
           extract_band() {
-            local start=$1
-            local end=$2
+  local start=$1
+  local end=$2
 
-            jq -r --arg s "$start" --arg e "$end" '
-              .results
-              | map(select(.valid_from >= $s and .valid_to <= $e))
-              | sort_by(.value_inc_vat)
-              | if length == 0 then null else
-                  .[0] | {
-                    band:
-                      (if .value_inc_vat < 0.20 then "green"
-                       elif .value_inc_vat < 0.30 then "amber"
-                       else "red"
-                      end),
-                    price: (.value_inc_vat),
-                    start: .valid_from,
-                    end: .valid_to
-                  }
-                end
-            ' raw.json
-          }
+  jq -r --arg s "$start" --arg e "$end" '
+    .results
+    | map(select(.valid_from >= $s and .valid_to <= $e))
+    | if length == 0 then null else
+        (
+          # average price across entire band
+          . as $items
+          | {
+              band:
+                (if ($items | map(.value_inc_vat) | add / length) < 0.20 then "green"
+                 elif ($items | map(.value_inc_vat) | add / length) < 0.30 then "amber"
+                 else "red"
+                end),
+              price: ($items | map(.value_inc_vat) | add / length),
+              start: ($items | map(.valid_from) | min),
+              end: ($items | map(.valid_to) | max)
+            }
+        )
+      end
+  ' raw.json
+}
+
 
           # Today bands
           GREEN_T_START="${TODAY_DATE}T23:00:00Z"
