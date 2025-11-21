@@ -13,73 +13,50 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: fetch today and tomorrow from edf
+      - name: fetch today and tomorrow from kraken
         run: |
-          # Dates in UTC
+          set -euo pipefail
+
           TODAY=$(date -u +"%Y-%m-%d")
           TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
 
-          # Common fields
-          REGION="E"
-          PRODUCT="EDF_FREEPHASE_DYNAMIC_12M_HH"
-          SESSION="github-action"
+          BASE="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
 
-          # Build request bodies with jq to ensure valid json
-          BODY_TODAY=$(jq -n \
-            --arg region "$REGION" \
-            --arg product "$PRODUCT" \
-            --arg from "${TODAY}T00:00:00.000Z" \
-            --arg to   "${TODAY}T23:30:00.000Z" \
-            --arg sid  "$SESSION" \
-            '{region:$region,productCode:$product,periodFrom:$from,periodTo:$to,sessionId:$sid}')
+          echo "Fetching today prices..."
+          curl -s "${BASE}?page_size=96&period_from=${TODAY}T00:00Z&period_to=${TODAY}T23:59Z" > today_raw.json
 
-          BODY_TOMORROW=$(jq -n \
-            --arg region "$REGION" \
-            --arg product "$PRODUCT" \
-            --arg from "${TOMORROW}T00:00:00.000Z" \
-            --arg to   "${TOMORROW}T23:30:00.000Z" \
-            --arg sid  "$SESSION" \
-            '{region:$region,productCode:$product,periodFrom:$from,periodTo:$to,sessionId:$sid}')
+          echo "Fetching tomorrow prices..."
+          curl -s "${BASE}?page_size=96&period_from=${TOMORROW}T00:00Z&period_to=${TOMORROW}T23:59Z" > tomorrow_raw.json
 
-          # Call EDF endpoint for today
-          curl -s \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -d "$BODY_TODAY" \
-            "https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates" \
-            > today.json
+          echo "First part of today_raw.json:"
+          head -c 400 today_raw.json || true
+          echo
+          echo "First part of tomorrow_raw.json:"
+          head -c 400 tomorrow_raw.json || true
+          echo
 
-          # Call EDF endpoint for tomorrow
-          curl -s \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -d "$BODY_TOMORROW" \
-            "https://acq-api.pri.cus-chnnls-sales-core.aws.edfcloud.io/half-hourly-unit-rates" \
-            > tomorrow.json
-
-          # Build data.json with three band prices per day
-          # Assumes exactly three distinct prices per day
           jq -s '
-            {
-              today:
-                (.[0].results
-                 | map(.value_inc_vat)
-                 | unique
-                 | sort
-                 | {green: (.[0]|tostring + " pence"),
-                    amber: (.[1]|tostring + " pence"),
-                    red:   (.[2]|tostring + " pence")}),
+          {
+            today:
+              (.[0].results
+               | map(.value_inc_vat)
+               | unique
+               | sort
+               | {green: (.[0] | tostring + " pence"),
+                  amber: (.[1] | tostring + " pence"),
+                  red:   (.[2] | tostring + " pence")}),
 
-              tomorrow:
-                (.[1].results
-                 | map(.value_inc_vat)
-                 | unique
-                 | sort
-                 | {green: (.[0]|tostring + " pence"),
-                    amber: (.[1]|tostring + " pence"),
-                    red:   (.[2]|tostring + " pence")})
-            }' today.json tomorrow.json > data.json
+            tomorrow:
+              (.[1].results
+               | map(.value_inc_vat)
+               | unique
+               | sort
+               | {green: (.[0] | tostring + " pence"),
+                  amber: (.[1] | tostring + " pence"),
+                  red:   (.[2] | tostring + " pence")})
+          }' today_raw.json tomorrow_raw.json > data.json
 
+          echo "Built data.json:"
           cat data.json
 
       - name: commit updated data
