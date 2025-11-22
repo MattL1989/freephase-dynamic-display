@@ -21,85 +21,118 @@ jobs:
           sudo apt update
           sudo apt install -y jq
 
-      - name: Fetch rates
+      - name: Fetch and process rates
         run: |
           set -euo pipefail
 
           API="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
 
-          TODAY_DATE=$(date -u +"%Y-%m-%d")
-          TOMORROW_DATE=$(date -u -d "+1 day" +"%Y-%m-%d")
-          DAY_AFTER_DATE=$(date -u -d "+2 days" +"%Y-%m-%d")
-          YESTERDAY_DATE=$(date -u -d "yesterday" +"%Y-%m-%d")
+          TODAY=$(date -u +"%Y-%m-%d")
+          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
+          YDAY=$(date -u -d "yesterday" +"%Y-%m-%d")
+          DAY_AFTER=$(date -u -d "+2 day" +"%Y-%m-%d")
 
-          PERIOD_FROM="${YESTERDAY_DATE}T00:00:00Z"
-          PERIOD_TO="${DAY_AFTER_DATE}T23:59:59Z"
+          PERIOD_FROM="${YDAY}T00:00:00Z"
+          PERIOD_TO="${DAY_AFTER}T23:59:59Z"
 
           curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
 
-          if ! jq -e '.results' raw.json >/dev/null 2>&1; then
-            echo "Invalid EDF response"
-            exit 1
-          fi
-
           extract_band() {
-            local start=$1
-            local end=$2
+            local start1=$1
+            local end1=$2
+            local start2=$3
+            local end2=$4
 
-            jq -r --arg s "$start" --arg e "$end" '
+            jq -r \
+              --arg s1 "$start1" --arg e1 "$end1" \
+              --arg s2 "$start2" --arg e2 "$end2" '
+                .results
+                | map(select((.valid_from >= $s1 and .valid_from < $e1)
+                           or (.valid_from >= $s2 and .valid_from < $e2)))
+                | if length == 0 then null else
+                    (
+                      . as $items
+                      | {
+                          price: ($items | map(.value_inc_vat) | add / length),
+                          start_list: ($items | map(.valid_from) | sort),
+                          end_list: ($items | map(.valid_to) | sort)
+                        }
+                    )
+                  end
+              ' raw.json
+          }
+
+          # Green
+          GREEN_T_START="${YDAY}T23:00:00Z"
+          GREEN_T_END="${TODAY}T06:00:00Z"
+
+          # Amber windows
+          AM1_T_START="${TODAY}T06:00:00Z"
+          AM1_T_END="${TODAY}T16:00:00Z"
+          AM2_T_START="${TODAY}T19:00:00Z"
+          AM2_T_END="${TODAY}T23:00:00Z"
+
+          RED_T_START="${TODAY}T16:00:00Z"
+          RED_T_END="${TODAY}T19:00:00Z"
+
+          # Tomorrow
+          GREEN_TM_START="${TODAY}T23:00:00Z"
+          GREEN_TM_END="${TOMORROW}T06:00:00Z"
+
+          AM1_TM_START="${TOMORROW}T06:00:00Z"
+          AM1_TM_END="${TOMORROW}T16:00:00Z"
+          AM2_TM_START="${TOMORROW}T19:00:00Z"
+          AM2_TM_END="${TOMORROW}T23:00:00Z"
+
+          RED_TM_START="${TOMORROW}T16:00:00Z"
+          RED_TM_END="${TOMORROW}T19:00:00Z"
+
+          TODAY_GREEN=$(extract_band "$GREEN_T_START" "$GREEN_T_END" "" "")
+          TODAY_AMBER=$(extract_band "$AM1_T_START" "$AM1_T_END" "$AM2_T_START" "$AM2_T_END")
+
+          TODAY_RED=$(jq -r --arg s "$RED_T_START" --arg e "$RED_T_END" '
               .results
               | map(select(.valid_from >= $s and .valid_from < $e))
               | if length == 0 then null else
-                  (
-                    . as $items
-                    | {
-                        band:
-                          (if ($items | map(.value_inc_vat) | add / length) < 0.20 then "green"
-                           elif ($items | map(.value_inc_vat) | add / length) < 0.30 then "amber"
-                           else "red"
-                          end),
-                        price: ($items | map(.value_inc_vat) | add / length),
-                        start: ($items | map(.valid_from) | min),
-                        end: ($items | map(.valid_to) | max)
-                      }
-                  )
+                  (. as $items | {
+                    price: ($items | map(.value_inc_vat) | add / length),
+                    start_list: ($items | map(.valid_from)),
+                    end_list: ($items | map(.valid_to))
+                  })
                 end
-            ' raw.json
-          }
+            ' raw.json)
 
-          # Today's bands
-          GREEN_T_START="${YESTERDAY_DATE}T23:00:00Z"
-          GREEN_T_END="${TODAY_DATE}T06:00:00Z"
-          AMBER_T_START="${TODAY_DATE}T06:00:00Z"
-          AMBER_T_END="${TODAY_DATE}T16:00:00Z"
-          RED_T_START="${TODAY_DATE}T16:00:00Z"
-          RED_T_END="${TODAY_DATE}T19:00:00Z"
-
-          # Tomorrow bands
-          GREEN_TM_START="${TODAY_DATE}T23:00:00Z"
-          GREEN_TM_END="${TOMORROW_DATE}T06:00:00Z"
-          AMBER_TM_START="${TOMORROW_DATE}T06:00:00Z"
-          AMBER_TM_END="${TOMORROW_DATE}T16:00:00Z"
-          RED_TM_START="${TOMORROW_DATE}T16:00:00Z"
-          RED_TM_END="${TOMORROW_DATE}T19:00:00Z"
+          TM_GREEN=$(extract_band "$GREEN_TM_START" "$GREEN_TM_END" "" "")
+          TM_AMBER=$(extract_band "$AM1_TM_START" "$AM1_TM_END" "$AM2_TM_START" "$AM2_TM_END")
+          TM_RED=$(jq -r --arg s "$RED_TM_START" --arg e "$RED_TM_END" '
+              .results
+              | map(select(.valid_from >= $s and .valid_from < $e))
+              | if length == 0 then null else
+                  (. as $items | {
+                    price: ($items | map(.value_inc_vat) | add / length),
+                    start_list: ($items | map(.valid_from)),
+                    end_list: ($items | map(.valid_to))
+                  })
+                end
+            ' raw.json)
 
           jq -n \
-            --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
-            --argjson tamber "$(extract_band "$AMBER_T_START" "$AMBER_T_END")" \
-            --argjson tred "$(extract_band "$RED_T_START" "$RED_T_END")" \
-            --argjson tmgreen "$(extract_band "$GREEN_TM_START" "$GREEN_TM_END")" \
-            --argjson tmamber "$(extract_band "$AMBER_TM_START" "$AMBER_TM_END")" \
-            --argjson tmred "$(extract_band "$RED_TM_START" "$RED_TM_END")" \
+            --argjson g1 "$TODAY_GREEN" \
+            --argjson a1 "$TODAY_AMBER" \
+            --argjson r1 "$TODAY_RED" \
+            --argjson g2 "$TM_GREEN" \
+            --argjson a2 "$TM_AMBER" \
+            --argjson r2 "$TM_RED" \
             '{
               today: {
-                green: $tgreen,
-                amber: $tamber,
-                red: $tred
+                green: $g1,
+                amber: $a1,
+                red: $r1
               },
               tomorrow: {
-                green: $tmgreen,
-                amber: $tmamber,
-                red: $tmred
+                green: $g2,
+                amber: $a2,
+                red: $r2
               }
             }' > data.json
 
@@ -108,5 +141,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add data.json
-          git commit -m "update data" || echo "No changes to commit"
+          git commit -m "update data" || echo "No changes"
           git push
