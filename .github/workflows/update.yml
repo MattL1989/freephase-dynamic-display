@@ -63,8 +63,11 @@ jobs:
             ' raw.json
           }
 
-          GREEN_T_START="${TODAY_DATE}T23:00:00Z"
-          GREEN_T_END="${TOMORROW_DATE}T06:00:00Z"
+          YESTERDAY_DATE=$(date -u -d "yesterday" +"%Y-%m-%d")
+
+          GREEN_T_START="${YESTERDAY_DATE}T23:00:00Z"
+          GREEN_T_END="${TODAY_DATE}T06:00:00Z"
+
 
           AMBER_T_START="${TODAY_DATE}T06:00:00Z"
           AMBER_T_END="${TODAY_DATE}T16:00:00Z"
