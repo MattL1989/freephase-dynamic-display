@@ -135,13 +135,13 @@ function formatTime(iso) {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-// Savings vs standard variable 25.65p
+// Savings vs baseline
 const BASELINE = 25.65;
 
+// Build card (GREEN / RED use single range — AMBER will use 2)
 function buildCard(day, band, item) {
   const container = document.getElementById(`${day}-${band}`);
 
-  // If null (tomorrow not yet published)
   if (!item) {
     container.innerHTML = `
       <div class="band-card ${band} placeholder">
@@ -159,24 +159,26 @@ function buildCard(day, band, item) {
       ? `<span class="saving green">▼ ${saving.toFixed(0)} percent below baseline</span>`
       : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
 
-let rangeText;
+  // *** ONLY CHANGE YOU WANTED — AMBER SHOWS TWO RANGES ***
+  let rangeText = "";
+  if (band === "amber") {
+    rangeText = `
+      06:00 to 16:00<br>
+      19:00 to 23:00
+    `;
+  } else {
+    rangeText = `${formatTime(item.start)} to ${formatTime(item.end)}`;
+  }
 
-if (band === "amber" && day === "today") {
-  rangeText = "06:00 to 16:00 & 19:00 to 23:00";
-} else if (band === "amber" && day === "tomorrow") {
-  rangeText = "06:00 to 16:00 & 19:00 to 23:00";
-} else {
-  rangeText = `${formatTime(item.start)} to ${formatTime(item.end)}`;
+  container.innerHTML = `
+    <div class="band-card ${band}" id="${day}-${band}-card">
+      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
+      <div class="price">${item.price.toFixed(2)}p per kWh</div>
+      <div>${rangeText}</div>
+      ${savingText}
+    </div>
+  `;
 }
-
-container.innerHTML = `
-  <div class="band-card ${band}" id="${day}-${band}-card">
-    <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
-    <div class="price">${item.price.toFixed(2)}p per kWh</div>
-    <div>${rangeText}</div>
-    ${savingText}
-  </div>
-;
 
 // Highlight current band
 function highlightCurrentBand(data) {
@@ -185,10 +187,8 @@ function highlightCurrentBand(data) {
   ["green","amber","red"].forEach(band => {
     const item = data.today[band];
     if (!item) return;
-
     const start = new Date(item.start);
     const end = new Date(item.end);
-
     if (now >= start && now <= end) {
       const card = document.getElementById(`today-${band}-card`);
       if (card) card.classList.add("current");
@@ -196,11 +196,10 @@ function highlightCurrentBand(data) {
   });
 }
 
-// Load JSON
-fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json")
+// Load JSON from deployed site
+fetch("data.json")
   .then(r => r.json())
   .then(data => {
-
     ["today", "tomorrow"].forEach(day => {
       ["green", "amber", "red"].forEach(band => {
         buildCard(day, band, data[day][band]);
@@ -210,7 +209,7 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
     highlightCurrentBand(data);
   })
   .catch(err => console.error("Error loading data:", err));
-
 </script>
+
 </body>
 </html>
