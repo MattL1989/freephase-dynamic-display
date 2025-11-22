@@ -3,65 +3,205 @@
 <head>
 <meta charset="UTF-8">
 <title>EDF FreePhase Dynamic</title>
+
 <style>
   body {
     background: #000;
-    color: white;
-    font-family: Arial, sans-serif;
+    color: #fff;
+    font-family: "Segoe UI", Arial, sans-serif;
     text-align: center;
+    margin: 0;
+    padding: 0;
   }
-  .band {
+
+  header {
+    padding: 30px 0 10px 0;
+  }
+
+  h1 {
+    font-size: 42px;
+    font-weight: 600;
+    margin-bottom: 5px;
+  }
+
+  .clock {
+    font-size: 18px;
+    color: #bbb;
+    margin-bottom: 25px;
+  }
+
+  h2 {
+    font-size: 28px;
+    margin: 30px 0 10px 0;
+    font-weight: 500;
+  }
+
+  .band-card {
     width: 90%;
-    margin: 20px auto;
-    padding: 20px;
-    font-size: 32px;
-    border-radius: 12px;
+    margin: 15px auto;
+    padding: 25px;
+    border-radius: 18px;
     color: white;
+    font-size: 26px;
+    box-shadow: 0px 0px 25px rgba(0,0,0,0.4);
+    position: relative;
+    transition: transform 0.3s, opacity 0.3s;
   }
+
+  .band-card.current {
+    transform: scale(1.04);
+    box-shadow: 0 0 35px rgba(255,255,255,0.25);
+    border: 2px solid white;
+  }
+
+  .dot {
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
   .green { background: #1f8f2e; }
   .amber { background: #c9a200; }
   .red { background: #b00000; }
-  h1, h2 { margin: 30px; }
+
+  .dot.green { background: #58d46d; }
+  .dot.amber { background: #ffd84a; }
+  .dot.red { background: #ff4c4c; }
+
+  .price {
+    font-size: 34px;
+    font-weight: bold;
+    margin: 8px 0;
+  }
+
+  .saving {
+    margin-top: 5px;
+    font-size: 18px;
+  }
+
+  .saving.green { color: #58d46d; }
+  .saving.amber { color: #ffd84a; }
+  .saving.red { color: #ff4c4c; }
+
+  footer {
+    margin-top: 40px;
+    padding: 20px;
+    font-size: 16px;
+    color: #666;
+  }
+
+  .placeholder {
+    opacity: 0.4;
+    font-size: 22px;
+  }
 </style>
+
 </head>
 <body>
 
-<h1>West Midlands</h1>
+<header>
+  <h1>West Midlands</h1>
+  <div class="clock" id="clock">Loading time…</div>
+</header>
 
 <h2>Today</h2>
-<div id="today-green" class="band green"></div>
-<div id="today-amber" class="band amber"></div>
-<div id="today-red" class="band red"></div>
+<div id="today-green"></div>
+<div id="today-amber"></div>
+<div id="today-red"></div>
 
 <h2>Tomorrow</h2>
-<div id="tomorrow-green" class="band green"></div>
-<div id="tomorrow-amber" class="band amber"></div>
-<div id="tomorrow-red" class="band red"></div>
+<div id="tomorrow-green"></div>
+<div id="tomorrow-amber"></div>
+<div id="tomorrow-red"></div>
+
+<footer>
+  EDF FreePhase Display • Auto-updated hourly via GitHub Actions
+</footer>
 
 <script>
+// Live clock
+function updateClock() {
+  document.getElementById("clock").textContent = new Date().toLocaleString("en-GB");
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Convert ISO → HH:MM
 function formatTime(iso) {
   const d = new Date(iso);
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-// *** FIXED: now reads the live data.json from your main branch ***
+// Savings vs standard variable 25.65p
+const BASELINE = 25.65;
+
+function buildCard(day, band, item) {
+  const container = document.getElementById(`${day}-${band}`);
+
+  // If null (tomorrow not yet published)
+  if (!item) {
+    container.innerHTML = `
+      <div class="band-card ${band} placeholder">
+        <div class="dot ${band}"></div>
+        ${band.toUpperCase()}<br>
+        <div>Awaiting publication</div>
+      </div>
+    `;
+    return;
+  }
+
+  const saving = ((BASELINE - item.price) / BASELINE) * 100;
+  const savingText =
+    saving >= 0
+      ? `<span class="saving green">▼ ${saving.toFixed(0)} percent below baseline</span>`
+      : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
+
+  container.innerHTML = `
+    <div class="band-card ${band}" id="${day}-${band}-card">
+      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
+      <div class="price">${item.price.toFixed(2)}p per kWh</div>
+      <div>${formatTime(item.start)} to ${formatTime(item.end)}</div>
+      ${savingText}
+    </div>
+  `;
+}
+
+// Highlight current band
+function highlightCurrentBand(data) {
+  const now = new Date();
+
+  ["green","amber","red"].forEach(band => {
+    const item = data.today[band];
+    if (!item) return;
+
+    const start = new Date(item.start);
+    const end = new Date(item.end);
+
+    if (now >= start && now <= end) {
+      const card = document.getElementById(`today-${band}-card`);
+      if (card) card.classList.add("current");
+    }
+  });
+}
+
+// Load JSON
 fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json")
   .then(r => r.json())
   .then(data => {
+
     ["today", "tomorrow"].forEach(day => {
       ["green", "amber", "red"].forEach(band => {
-        const item = data[day][band];
-        if (!item) return;
-
-        const el = document.getElementById(`${day}-${band}`);
-        el.innerHTML = `${band.toUpperCase()}<br>${item.price.toFixed(2)}p<br>${formatTime(item.start)} to ${formatTime(item.end)}`;
+        buildCard(day, band, data[day][band]);
       });
     });
-  })
-  .catch(err => {
-    console.error("Error loading data.json:", err);
-  });
-</script>
 
+    highlightCurrentBand(data);
+  })
+  .catch(err => console.error("Error loading data:", err));
+
+</script>
 </body>
 </html>
