@@ -9,43 +9,42 @@
     background: #000;
     color: #fff;
     font-family: "Segoe UI", Arial, sans-serif;
-    text-align: center;
     margin: 0;
     padding: 0;
+    text-align: center;
   }
 
   header {
-    padding: 30px 0 10px 0;
+    padding: 20px 0 5px 0;
   }
 
   h1 {
-    font-size: 42px;
+    font-size: 46px;
     font-weight: 600;
-    margin-bottom: 5px;
+    margin: 0;
   }
 
   .clock {
-    font-size: 18px;
+    font-size: 22px;
     color: #bbb;
-    margin-bottom: 25px;
+    margin-top: 5px;
+    margin-bottom: 10px;
   }
 
   h2 {
-    font-size: 28px;
-    margin: 30px 0 10px 0;
+    font-size: 34px;
+    margin: 22px 0 12px 0;
     font-weight: 500;
   }
 
   .band-card {
-    width: 90%;
-    margin: 15px auto;
-    padding: 25px;
-    border-radius: 18px;
-    color: white;
-    font-size: 26px;
-    box-shadow: 0px 0px 25px rgba(0,0,0,0.4);
-    position: relative;
-    transition: transform 0.3s, opacity 0.3s;
+    width: 92%;
+    margin: 12px auto;
+    padding: 22px;
+    border-radius: 20px;
+    font-size: 30px;
+    box-shadow: 0px 0px 25px rgba(255,255,255,0.12);
+    transition: transform 0.25s;
   }
 
   .band-card.current {
@@ -55,47 +54,43 @@
   }
 
   .dot {
-    height: 18px;
-    width: 18px;
+    height: 22px;
+    width: 22px;
     border-radius: 50%;
     display: inline-block;
-    margin-right: 10px;
+    margin-right: 12px;
     vertical-align: middle;
   }
-
-  .green { background: #1f8f2e; }
-  .amber { background: #c9a200; }
-  .red { background: #b00000; }
 
   .dot.green { background: #58d46d; }
   .dot.amber { background: #ffd84a; }
   .dot.red { background: #ff4c4c; }
 
   .price {
-    font-size: 34px;
+    font-size: 42px;
     font-weight: bold;
-    margin: 8px 0;
+    margin: 10px 0;
   }
 
   .saving {
-    margin-top: 5px;
-    font-size: 18px;
+    margin-top: 6px;
+    font-size: 22px;
   }
 
   .saving.green { color: #58d46d; }
   .saving.amber { color: #ffd84a; }
   .saving.red { color: #ff4c4c; }
 
-  footer {
-    margin-top: 40px;
-    padding: 20px;
-    font-size: 16px;
-    color: #666;
-  }
-
   .placeholder {
     opacity: 0.4;
-    font-size: 22px;
+    font-size: 26px;
+  }
+
+  footer {
+    margin-top: 35px;
+    padding-bottom: 25px;
+    font-size: 20px;
+    color: #666;
   }
 </style>
 
@@ -104,7 +99,7 @@
 
 <header>
   <h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-  <div class="clock" id="clock">Loading time…</div>
+  <div class="clock" id="clock">Loading…</div>
 </header>
 
 <h2>Today</h2>
@@ -118,26 +113,32 @@
 <div id="tomorrow-red"></div>
 
 <footer>
-  EDF FreePhase Display by Matt Lewis • Auto-updated hourly via GitHub Actions
+  EDF FreePhase Dynamic Display by Matt Lewis • Auto-updated hourly
 </footer>
 
 <script>
-// Live clock
+// Live Clock
 function updateClock() {
-  document.getElementById("clock").textContent = new Date().toLocaleString("en-GB");
+  document.getElementById("clock").textContent =
+    new Date().toLocaleString("en-GB");
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-// Convert ISO → HH:MM
+// Format time
 function formatTime(iso) {
+  if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
-// Savings vs standard variable 25.65p
+// Baseline for savings
 const BASELINE = 25.65;
 
+// Build card UI
 function buildCard(day, band, item) {
   const container = document.getElementById(`${day}-${band}`);
 
@@ -145,44 +146,58 @@ function buildCard(day, band, item) {
   if (!item) {
     container.innerHTML = `
       <div class="band-card ${band} placeholder">
-        <div class="dot ${band}"></div>
-        ${band.toUpperCase()}<br>
-        <div>Awaiting publication</div>
+        <span class="dot ${band}"></span> ${band.toUpperCase()}<br>
+        Awaiting publication
       </div>
     `;
     return;
   }
 
+  // Weighted average price
+  const price = item.price.toFixed(2);
+
+  // Savings percentage
   const saving = ((BASELINE - item.price) / BASELINE) * 100;
-  const savingText =
+  const savingHTML =
     saving >= 0
-      ? `<span class="saving green">▼ ${saving.toFixed(0)} percent below baseline</span>`
-      : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
+      ? `<div class="saving green">▼ ${saving.toFixed(0)} percent below baseline</div>`
+      : `<div class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</div>`;
+
+  // Dual amber windows (start_list / end_list)
+  let windowHTML = "";
+  if (item.start_list && item.start_list.length > 0) {
+    for (let i = 0; i < item.start_list.length; i++) {
+      windowHTML += `
+        <div>${formatTime(item.start_list[i])} to ${formatTime(item.end_list[i])}</div>
+      `;
+    }
+  }
 
   container.innerHTML = `
     <div class="band-card ${band}" id="${day}-${band}-card">
       <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
-      <div class="price">${item.price.toFixed(2)}p per kWh</div>
-      <div>${formatTime(item.start)} to ${formatTime(item.end)}</div>
-      ${savingText}
+      <div class="price">${price}p per kWh</div>
+      ${windowHTML}
+      ${savingHTML}
     </div>
   `;
 }
 
-// Highlight current band
+// Highlight active band
 function highlightCurrentBand(data) {
   const now = new Date();
 
-  ["green","amber","red"].forEach(band => {
+  ["green", "amber", "red"].forEach(band => {
     const item = data.today[band];
-    if (!item) return;
+    if (!item || !item.start_list) return;
 
-    const start = new Date(item.start);
-    const end = new Date(item.end);
-
-    if (now >= start && now <= end) {
-      const card = document.getElementById(`today-${band}-card`);
-      if (card) card.classList.add("current");
+    for (let i = 0; i < item.start_list.length; i++) {
+      const start = new Date(item.start_list[i]);
+      const end = new Date(item.end_list[i]);
+      if (now >= start && now <= end) {
+        const card = document.getElementById(`today-${band}-card`);
+        if (card) card.classList.add("current");
+      }
     }
   });
 }
@@ -200,7 +215,7 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
 
     highlightCurrentBand(data);
   })
-  .catch(err => console.error("Error loading data:", err));
+  .catch(err => console.error("Error loading data", err));
 
 </script>
 </body>
