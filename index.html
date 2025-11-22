@@ -7,135 +7,190 @@
 
 <style>
     body {
-        background: #000;
-        color: white;
         font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
+        background: black;
+        color: white;
         text-align: center;
+        margin: 0;
+        padding-bottom: 40px;
     }
 
-    h1 {
-        font-size: 2.2em;
-        margin-top: 15px;
+    .container {
+        width: 95%;
+        margin: auto;
+        max-width: 1000px;
     }
 
-    .section-title {
-        font-size: 1.7em;
-        margin: 25px 0 10px;
-        font-weight: bold;
+    .panel {
+        background: #111;
+        border-radius: 20px;
+        margin: 25px 0;
+        padding: 25px;
+        box-shadow: 0 0 25px rgba(255,255,255,0.15);
     }
 
-    .band-box {
-        margin: 10px auto;
-        padding: 18px;
-        width: 92%;
-        border-radius: 14px;
-        box-shadow: 0 0 15px rgba(255,255,255,0.15);
-    }
+    h1, h2, h3 { margin: 10px 0; }
 
-    .green { background: #178c2a; }
-    .amber { background: #c7a500; }
-    .red { background: #b30000; }
-
-    .band-name {
-        font-size: 1.8em;
-        font-weight: bold;
-        margin-top: 5px;
-    }
+    .green-dot { color: #3dd33d; }
+    .amber-dot { color: #e0c020; }
+    .red-dot { color: #e03030; }
 
     .price {
-        font-size: 1.8em;
-        margin: 8px 0;
+        font-size: 2.3rem;
+        font-weight: bold;
+        margin: 10px 0 20px;
     }
 
     .range {
-        font-size: 1.3em;
-        margin-bottom: 10px;
+        font-size: 1.4rem;
+        margin-top: 12px;
+        line-height: 2.1rem;
     }
 
-    .subtext {
-        font-size: 1.0em;
-        margin-top: 6px;
-        opacity: 0.75;
+    .percent {
+        font-size: 1rem;
+        margin-top: 15px;
+        opacity: 0.8;
     }
 
 </style>
+
 </head>
+
 <body>
 
-<h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-<div id="timestamp" class="subtext"></div>
+<div class="container">
+    <h1>EDF FreePhase Dynamic - ST15 0WL</h1>
+    <h3 id="timestamp">Loading…</h3>
 
-<div class="section-title">Today</div>
-<div id="today"></div>
+    <h2>Today</h2>
 
-<div class="section-title">Tomorrow</div>
-<div id="tomorrow"></div>
+    <div id="today-green"></div>
+    <div id="today-amber"></div>
+    <div id="today-red"></div>
+
+    <h2>Tomorrow</h2>
+
+    <div id="tomorrow-green"></div>
+    <div id="tomorrow-amber"></div>
+    <div id="tomorrow-red"></div>
+
+</div>
 
 <script>
-async function loadData() {
-    const response = await fetch("data.json");
-    const data = await response.json();
+// ----------- Utility Functions --------------
 
-    document.getElementById("timestamp").innerText =
-        new Date().toLocaleString("en-GB");
-
-    renderDay("today", data.today);
-    renderDay("tomorrow", data.tomorrow);
+function fmtTime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("en-UK", { hour: "2-digit", minute: "2-digit" });
 }
 
-function renderDay(containerId, dayData) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = "";
+function percentDiff(price, baseline = 25.65) {
+    const diff = ((price - baseline) / baseline) * 100;
+    if (diff === 0) return "same as baseline";
+    if (diff < 0) return `${Math.abs(diff).toFixed(0)} percent below baseline`;
+    return `${diff.toFixed(0)} percent above baseline`;
+}
 
-    const bands = [
-        { key: "green", label: "GREEN", class: "green" },
-        { key: "amber", label: "AMBER", class: "amber" },
-        { key: "red", label: "RED", class: "red" }
-    ];
+function createBandPanel(title, colourClass, price, ranges, pctText) {
+    if (!price) return "";
 
-    const OFFICIAL_RANGES = {
-        green: "23:00 to 06:00",
-        amber: "06:00 to 16:00, 19:00 to 23:00",
-        red: "16:00 to 19:00"
-    };
+    const rangeStr = ranges.join(" and ");
 
-    bands.forEach(b => {
-        const item = dayData[b.key];
-        const box = document.createElement("div");
-        box.className = `band-box ${b.class}`;
+    return `
+    <div class="panel">
+        <h3><span class="${colourClass}-dot">●</span> ${title}</h3>
+        <div class="price">${price.toFixed(2)}p per kWh</div>
+        <div class="range">${rangeStr}</div>
+        <div class="percent">${pctText}</div>
+    </div>`;
+}
 
-        if (!item) {
-            box.innerHTML = `
-                <div class="band-name">${b.label}</div>
-                <div class="subtext">Awaiting publication</div>
-            `;
-        } else {
-            box.innerHTML = `
-                <div class="band-name">${b.label}</div>
-                <div class="price">${item.price.toFixed(2)}p per kWh</div>
-                <div class="range">${OFFICIAL_RANGES[b.key]}</div>
-                <div class="subtext">${percentDelta(item.price)}</div>
-            `;
-        }
+// ----------- Main Logic --------------
 
-        container.appendChild(box);
+fetch("data.json")
+    .then(r => r.json())
+    .then(data => {
+
+        document.getElementById("timestamp").textContent = new Date().toLocaleString("en-UK");
+
+        // TODAY
+        const tg = data.today.green;
+        const ta = data.today.amber;
+        const tr = data.today.red;
+
+        document.getElementById("today-green").innerHTML = tg
+            ? createBandPanel(
+                "GREEN",
+                "green",
+                tg.price * 100,
+                [ `${fmtTime(tg.start)} to ${fmtTime(tg.end)}` ],
+                percentDiff(tg.price * 100)
+              )
+            : "";
+
+        document.getElementById("today-amber").innerHTML = ta
+            ? createBandPanel(
+                "AMBER",
+                "amber",
+                ta.price * 100,
+                [
+                    "06:00 to 16:00",
+                    "19:00 to 23:00"
+                ],
+                percentDiff(ta.price * 100)
+              )
+            : "";
+
+        document.getElementById("today-red").innerHTML = tr
+            ? createBandPanel(
+                "RED",
+                "red",
+                tr.price * 100,
+                [ `${fmtTime(tr.start)} to ${fmtTime(tr.end)}` ],
+                percentDiff(tr.price * 100)
+              )
+            : "";
+
+        // TOMORROW
+        const mg = data.tomorrow.green;
+        const ma = data.tomorrow.amber;
+        const mr = data.tomorrow.red;
+
+        document.getElementById("tomorrow-green").innerHTML = mg
+            ? createBandPanel(
+                "GREEN",
+                "green",
+                mg.price * 100,
+                [ `${fmtTime(mg.start)} to ${fmtTime(mg.end)}` ],
+                percentDiff(mg.price * 100)
+              )
+            : `<div class="panel"><h3><span class="green-dot">●</span> GREEN</h3><div class="range">Awaiting publication</div></div>`;
+
+        document.getElementById("tomorrow-amber").innerHTML = ma
+            ? createBandPanel(
+                "AMBER",
+                "amber",
+                ma.price * 100,
+                [
+                    "06:00 to 16:00",
+                    "19:00 to 23:00"
+                ],
+                percentDiff(ma.price * 100)
+              )
+            : `<div class="panel"><h3><span class="amber-dot">●</span> AMBER</h3><div class="range">Awaiting publication</div></div>`;
+
+        document.getElementById("tomorrow-red").innerHTML = mr
+            ? createBandPanel(
+                "RED",
+                "red",
+                mr.price * 100,
+                [ `${fmtTime(mr.start)} to ${fmtTime(mr.end)}` ],
+                percentDiff(mr.price * 100)
+              )
+            : `<div class="panel"><h3><span class="red-dot">●</span> RED</h3><div class="range">Awaiting publication</div></div>`;
     });
-}
 
-function percentDelta(value) {
-    const baseline = 25.65; // standard variable price
-    const diff = ((value - baseline) / baseline) * 100;
-    const rounded = Math.abs(diff).toFixed(0);
-
-    if (diff < 0) return `▼ ${rounded} percent below baseline`;
-    if (diff > 0) return `▲ ${rounded} percent above baseline`;
-    return "Same as baseline";
-}
-
-loadData();
 </script>
-
 </body>
 </html>
