@@ -18,7 +18,7 @@
     .container {
         width: 95%;
         margin: auto;
-        max-width: 1000px;
+        max-width: 900px;
     }
 
     .panel {
@@ -29,168 +29,154 @@
         box-shadow: 0 0 25px rgba(255,255,255,0.15);
     }
 
-    h1, h2, h3 { margin: 10px 0; }
+    h1, h2, h3 { margin: 12px 0; }
 
     .green-dot { color: #3dd33d; }
     .amber-dot { color: #e0c020; }
     .red-dot { color: #e03030; }
 
     .price {
-        font-size: 2.3rem;
+        font-size: 2.4rem;
         font-weight: bold;
-        margin: 10px 0 20px;
+        margin: 5px 0 15px;
     }
 
     .range {
-        font-size: 1.4rem;
+        font-size: 1.5rem;
         margin-top: 12px;
-        line-height: 2.1rem;
+        line-height: 2.2rem;
     }
 
     .percent {
         font-size: 1rem;
-        margin-top: 15px;
+        margin-top: 18px;
         opacity: 0.8;
     }
-
 </style>
-
 </head>
 
 <body>
 
 <div class="container">
     <h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-    <h3 id="timestamp">Loading…</h3>
+    <h3 id="timestamp">Loading...</h3>
 
     <h2>Today</h2>
-
     <div id="today-green"></div>
     <div id="today-amber"></div>
     <div id="today-red"></div>
 
     <h2>Tomorrow</h2>
-
     <div id="tomorrow-green"></div>
     <div id="tomorrow-amber"></div>
     <div id="tomorrow-red"></div>
-
 </div>
 
 <script>
-// ----------- Utility Functions --------------
-
+// Convert ISO to HH:MM
 function fmtTime(iso) {
-    const d = new Date(iso);
-    return d.toLocaleTimeString("en-UK", { hour: "2-digit", minute: "2-digit" });
+    return new Date(iso).toLocaleTimeString("en-UK", {
+        hour: "2-digit",
+        minute: "2-digit"
+    });
 }
 
-function percentDiff(price, baseline = 25.65) {
-    const diff = ((price - baseline) / baseline) * 100;
-    if (diff === 0) return "same as baseline";
+// Percent difference vs baseline (25.65p)
+function percentDiff(pricePence, baseline = 25.65) {
+    const diff = ((pricePence - baseline) / baseline) * 100;
     if (diff < 0) return `${Math.abs(diff).toFixed(0)} percent below baseline`;
-    return `${diff.toFixed(0)} percent above baseline`;
+    if (diff > 0) return `${diff.toFixed(0)} percent above baseline`;
+    return `same as baseline`;
 }
 
-function createBandPanel(title, colourClass, price, ranges, pctText) {
-    if (!price) return "";
-
-    const rangeStr = ranges.join(" and ");
-
+// Generate panel
+function createPanel(name, dotClass, price, start, end, pctText) {
     return `
     <div class="panel">
-        <h3><span class="${colourClass}-dot">●</span> ${title}</h3>
+        <h3><span class="${dotClass}-dot">●</span> ${name}</h3>
         <div class="price">${price.toFixed(2)}p per kWh</div>
-        <div class="range">${rangeStr}</div>
+        <div class="range">${fmtTime(start)} to ${fmtTime(end)}</div>
         <div class="percent">${pctText}</div>
     </div>`;
 }
 
-// ----------- Main Logic --------------
-
 fetch("data.json")
-    .then(r => r.json())
+    .then(resp => resp.json())
     .then(data => {
 
-        document.getElementById("timestamp").textContent = new Date().toLocaleString("en-UK");
+        document.getElementById("timestamp").textContent =
+            new Date().toLocaleString("en-UK");
 
-        // TODAY
-        const tg = data.today.green;
-        const ta = data.today.amber;
-        const tr = data.today.red;
+        // TODAY BANDS
+        const t = data.today;
 
-        document.getElementById("today-green").innerHTML = tg
-            ? createBandPanel(
+        document.getElementById("today-green").innerHTML = t.green ?
+            createPanel(
                 "GREEN",
                 "green",
-                tg.price * 100,
-                [ `${fmtTime(tg.start)} to ${fmtTime(tg.end)}` ],
-                percentDiff(tg.price * 100)
-              )
-            : "";
+                t.green.price * 100,
+                t.green.start,
+                t.green.end,
+                percentDiff(t.green.price * 100)
+            ) : "";
 
-        document.getElementById("today-amber").innerHTML = ta
-            ? createBandPanel(
-                "AMBER",
-                "amber",
-                ta.price * 100,
-                [
-                    "06:00 to 16:00",
-                    "19:00 to 23:00"
-                ],
-                percentDiff(ta.price * 100)
-              )
-            : "";
+        document.getElementById("today-amber").innerHTML = t.amber ?
+            `
+            <div class="panel">
+                <h3><span class="amber-dot">●</span> AMBER</h3>
+                <div class="price">${(t.amber.price * 100).toFixed(2)}p per kWh</div>
+                <div class="range">06:00 to 16:00<br>19:00 to 23:00</div>
+                <div class="percent">${percentDiff(t.amber.price * 100)}</div>
+            </div>
+            ` : "";
 
-        document.getElementById("today-red").innerHTML = tr
-            ? createBandPanel(
+        document.getElementById("today-red").innerHTML = t.red ?
+            createPanel(
                 "RED",
                 "red",
-                tr.price * 100,
-                [ `${fmtTime(tr.start)} to ${fmtTime(tr.end)}` ],
-                percentDiff(tr.price * 100)
-              )
-            : "";
+                t.red.price * 100,
+                t.red.start,
+                t.red.end,
+                percentDiff(t.red.price * 100)
+            ) : "";
 
-        // TOMORROW
-        const mg = data.tomorrow.green;
-        const ma = data.tomorrow.amber;
-        const mr = data.tomorrow.red;
+        // TOMORROW BANDS
+        const tm = data.tomorrow;
 
-        document.getElementById("tomorrow-green").innerHTML = mg
-            ? createBandPanel(
+        document.getElementById("tomorrow-green").innerHTML = tm.green ?
+            createPanel(
                 "GREEN",
                 "green",
-                mg.price * 100,
-                [ `${fmtTime(mg.start)} to ${fmtTime(mg.end)}` ],
-                percentDiff(mg.price * 100)
-              )
+                tm.green.price * 100,
+                tm.green.start,
+                tm.green.end,
+                percentDiff(tm.green.price * 100)
+            )
             : `<div class="panel"><h3><span class="green-dot">●</span> GREEN</h3><div class="range">Awaiting publication</div></div>`;
 
-        document.getElementById("tomorrow-amber").innerHTML = ma
-            ? createBandPanel(
-                "AMBER",
-                "amber",
-                ma.price * 100,
-                [
-                    "06:00 to 16:00",
-                    "19:00 to 23:00"
-                ],
-                percentDiff(ma.price * 100)
-              )
+        document.getElementById("tomorrow-amber").innerHTML = tm.amber ?
+            `
+            <div class="panel">
+                <h3><span class="amber-dot">●</span> AMBER</h3>
+                <div class="price">${(tm.amber.price * 100).toFixed(2)}p per kWh</div>
+                <div class="range">06:00 to 16:00<br>19:00 to 23:00</div>
+                <div class="percent">${percentDiff(tm.amber.price * 100)}</div>
+            </div>
+            `
             : `<div class="panel"><h3><span class="amber-dot">●</span> AMBER</h3><div class="range">Awaiting publication</div></div>`;
 
-        document.getElementById("tomorrow-red").innerHTML = mr
-            ? createBandPanel(
+        document.getElementById("tomorrow-red").innerHTML = tm.red ?
+            createPanel(
                 "RED",
                 "red",
-                mr.price * 100,
-                [ `${fmtTime(mr.start)} to ${fmtTime(mr.end)}` ],
-                percentDiff(mr.price * 100)
-              )
+                tm.red.price * 100,
+                tm.red.start,
+                tm.red.end,
+                percentDiff(tm.red.price * 100)
+            )
             : `<div class="panel"><h3><span class="red-dot">●</span> RED</h3><div class="range">Awaiting publication</div></div>`;
     });
-
 </script>
+
 </body>
 </html>
