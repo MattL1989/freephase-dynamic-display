@@ -2,16 +2,14 @@ name: Update FreePhase rates
 
 on:
   schedule:
-    - cron: "0 */1 * * *"   # every hour
+    - cron: "0 */1 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
-  update-and-deploy:
+  update:
     runs-on: ubuntu-latest
 
     steps:
@@ -69,7 +67,7 @@ jobs:
             ' raw.json
           }
 
-          # Today's bands (green uses yesterday → today 06:00)
+          # Today's bands
           GREEN_T_START="${YESTERDAY_DATE}T23:00:00Z"
           GREEN_T_END="${TODAY_DATE}T06:00:00Z"
           AMBER_T_START="${TODAY_DATE}T06:00:00Z"
@@ -112,8 +110,3 @@ jobs:
           git add data.json
           git commit -m "update data" || echo "No changes to commit"
           git push
-
-      - name: Trigger GitHub Pages deploy
-        uses: actions/deploy-pages@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
