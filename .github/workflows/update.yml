@@ -44,7 +44,7 @@ jobs:
 
             jq -r --arg s "$start" --arg e "$end" '
               .results
-              | map(select(.valid_from >= $s and .valid_to < $e))
+              | map(select(.valid_from >= $s and .valid_from < $e))
               | if length == 0 then null else
                   (
                     . as $items
