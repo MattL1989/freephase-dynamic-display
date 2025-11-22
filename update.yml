@@ -1,0 +1,112 @@
+name: Update FreePhase rates
+
+on:
+  schedule:
+    - cron: "0 */1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: |
+          sudo apt update
+          sudo apt install -y jq
+
+      - name: Fetch rates
+        run: |
+          set -euo pipefail
+
+          API="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
+
+          TODAY_DATE=$(date -u +"%Y-%m-%d")
+          TOMORROW_DATE=$(date -u -d "+1 day" +"%Y-%m-%d")
+          DAY_AFTER_DATE=$(date -u -d "+2 days" +"%Y-%m-%d")
+          YESTERDAY_DATE=$(date -u -d "yesterday" +"%Y-%m-%d")
+
+          PERIOD_FROM="${YESTERDAY_DATE}T00:00:00Z"
+          PERIOD_TO="${DAY_AFTER_DATE}T23:59:59Z"
+
+          curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
+
+          if ! jq -e '.results' raw.json >/dev/null 2>&1; then
+            echo "Invalid EDF response"
+            exit 1
+          fi
+
+          extract_band() {
+            local start=$1
+            local end=$2
+
+            jq -r --arg s "$start" --arg e "$end" '
+              .results
+              | map(select(.valid_from >= $s and .valid_from < $e))
+              | if length == 0 then null else
+                  (
+                    . as $items
+                    | {
+                        band:
+                          (if ($items | map(.value_inc_vat) | add / length) < 0.20 then "green"
+                           elif ($items | map(.value_inc_vat) | add / length) < 0.30 then "amber"
+                           else "red"
+                          end),
+                        price: ($items | map(.value_inc_vat) | add / length),
+                        start: ($items | map(.valid_from) | min),
+                        end: ($items | map(.valid_to) | max)
+                      }
+                  )
+                end
+            ' raw.json
+          }
+
+          # Today's bands
+          GREEN_T_START="${YESTERDAY_DATE}T23:00:00Z"
+          GREEN_T_END="${TODAY_DATE}T06:00:00Z"
+          AMBER_T_START="${TODAY_DATE}T06:00:00Z"
+          AMBER_T_END="${TODAY_DATE}T16:00:00Z"
+          RED_T_START="${TODAY_DATE}T16:00:00Z"
+          RED_T_END="${TODAY_DATE}T19:00:00Z"
+
+          # Tomorrow bands
+          GREEN_TM_START="${TODAY_DATE}T23:00:00Z"
+          GREEN_TM_END="${TOMORROW_DATE}T06:00:00Z"
+          AMBER_TM_START="${TOMORROW_DATE}T06:00:00Z"
+          AMBER_TM_END="${TOMORROW_DATE}T16:00:00Z"
+          RED_TM_START="${TOMORROW_DATE}T16:00:00Z"
+          RED_TM_END="${TOMORROW_DATE}T19:00:00Z"
+
+          jq -n \
+            --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
+            --argjson tamber "$(extract_band "$AMBER_T_START" "$AMBER_T_END")" \
+            --argjson tred "$(extract_band "$RED_T_START" "$RED_T_END")" \
+            --argjson tmgreen "$(extract_band "$GREEN_TM_START" "$GREEN_TM_END")" \
+            --argjson tmamber "$(extract_band "$AMBER_TM_START" "$AMBER_TM_END")" \
+            --argjson tmred "$(extract_band "$RED_TM_START" "$RED_TM_END")" \
+            '{
+              today: {
+                green: $tgreen,
+                amber: $tamber,
+                red: $tred
+              },
+              tomorrow: {
+                green: $tmgreen,
+                amber: $tmamber,
+                red: $tmred
+              }
+            }' > data.json
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add data.json
+          git commit -m "update data" || echo "No changes to commit"
+          git push
