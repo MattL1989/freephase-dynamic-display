@@ -38,29 +38,27 @@ jobs:
           curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
 
           extract_band() {
-            local start1=$1
-            local end1=$2
-            local start2=$3
-            local end2=$4
+  local start=$1
+  local end=$2
 
-            jq -r \
-              --arg s1 "$start1" --arg e1 "$end1" \
-              --arg s2 "$start2" --arg e2 "$end2" '
-                .results
-                | map(select((.valid_from >= $s1 and .valid_from < $e1)
-                           or (.valid_from >= $s2 and .valid_from < $e2)))
-                | if length == 0 then null else
-                    (
-                      . as $items
-                      | {
-                          price: ($items | map(.value_inc_vat) | add / length),
-                          start_list: ($items | map(.valid_from) | sort),
-                          end_list: ($items | map(.valid_to) | sort)
-                        }
-                    )
-                  end
-              ' raw.json
-          }
+  jq -r --arg s "$start" --arg e "$end" '
+    .results
+    | map(select(.valid_from >= $s and .valid_to <= $e))
+    | if length == 0 then null else
+        {
+          band:
+            (if (map(.value_inc_vat) | add / length) < 0.20 then "green"
+             elif (map(.value_inc_vat) | add / length) < 0.30 then "amber"
+             else "red"
+            end),
+          price: (map(.value_inc_vat) | add / length),
+          start: (map(.valid_from) | min),
+          end: (map(.valid_to) | max)
+        }
+      end
+  ' raw.json
+}
+
 
           # Green
           GREEN_T_START="${YDAY}T23:00:00Z"
