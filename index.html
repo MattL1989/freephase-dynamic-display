@@ -3,220 +3,139 @@
 <head>
 <meta charset="UTF-8">
 <title>EDF FreePhase Dynamic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-  body {
-    background: #000;
-    color: #fff;
-    font-family: "Segoe UI", Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    text-align: center;
-  }
+    body {
+        background: #000;
+        color: white;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        text-align: center;
+    }
 
-  header {
-    padding: 20px 0 5px 0;
-  }
+    h1 {
+        font-size: 2.2em;
+        margin-top: 15px;
+    }
 
-  h1 {
-    font-size: 46px;
-    font-weight: 600;
-    margin: 0;
-  }
+    .section-title {
+        font-size: 1.7em;
+        margin: 25px 0 10px;
+        font-weight: bold;
+    }
 
-  .clock {
-    font-size: 22px;
-    color: #bbb;
-    margin-top: 5px;
-    margin-bottom: 10px;
-  }
+    .band-box {
+        margin: 10px auto;
+        padding: 18px;
+        width: 92%;
+        border-radius: 14px;
+        box-shadow: 0 0 15px rgba(255,255,255,0.15);
+    }
 
-  h2 {
-    font-size: 34px;
-    margin: 22px 0 12px 0;
-    font-weight: 500;
-  }
+    .green { background: #178c2a; }
+    .amber { background: #c7a500; }
+    .red { background: #b30000; }
 
-  .band-card {
-    width: 92%;
-    margin: 12px auto;
-    padding: 22px;
-    border-radius: 20px;
-    font-size: 30px;
-    box-shadow: 0px 0px 25px rgba(255,255,255,0.12);
-    transition: transform 0.25s;
-  }
+    .band-name {
+        font-size: 1.8em;
+        font-weight: bold;
+        margin-top: 5px;
+    }
 
-  .band-card.current {
-    transform: scale(1.04);
-    box-shadow: 0 0 35px rgba(255,255,255,0.25);
-    border: 2px solid white;
-  }
+    .price {
+        font-size: 1.8em;
+        margin: 8px 0;
+    }
 
-  .dot {
-    height: 22px;
-    width: 22px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-right: 12px;
-    vertical-align: middle;
-  }
+    .range {
+        font-size: 1.3em;
+        margin-bottom: 10px;
+    }
 
-  .dot.green { background: #58d46d; }
-  .dot.amber { background: #ffd84a; }
-  .dot.red { background: #ff4c4c; }
+    .subtext {
+        font-size: 1.0em;
+        margin-top: 6px;
+        opacity: 0.75;
+    }
 
-  .price {
-    font-size: 42px;
-    font-weight: bold;
-    margin: 10px 0;
-  }
-
-  .saving {
-    margin-top: 6px;
-    font-size: 22px;
-  }
-
-  .saving.green { color: #58d46d; }
-  .saving.amber { color: #ffd84a; }
-  .saving.red { color: #ff4c4c; }
-
-  .placeholder {
-    opacity: 0.4;
-    font-size: 26px;
-  }
-
-  footer {
-    margin-top: 35px;
-    padding-bottom: 25px;
-    font-size: 20px;
-    color: #666;
-  }
 </style>
-
 </head>
 <body>
 
-<header>
-  <h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-  <div class="clock" id="clock">Loading…</div>
-</header>
+<h1>EDF FreePhase Dynamic - ST15 0WL</h1>
+<div id="timestamp" class="subtext"></div>
 
-<h2>Today</h2>
-<div id="today-green"></div>
-<div id="today-amber"></div>
-<div id="today-red"></div>
+<div class="section-title">Today</div>
+<div id="today"></div>
 
-<h2>Tomorrow</h2>
-<div id="tomorrow-green"></div>
-<div id="tomorrow-amber"></div>
-<div id="tomorrow-red"></div>
-
-<footer>
-  EDF FreePhase Dynamic Display by Matt Lewis • Auto-updated hourly
-</footer>
+<div class="section-title">Tomorrow</div>
+<div id="tomorrow"></div>
 
 <script>
-// Live Clock
-function updateClock() {
-  document.getElementById("clock").textContent =
-    new Date().toLocaleString("en-GB");
-}
-setInterval(updateClock, 1000);
-updateClock();
+async function loadData() {
+    const response = await fetch("data.json");
+    const data = await response.json();
 
-// Format time
-function formatTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+    document.getElementById("timestamp").innerText =
+        new Date().toLocaleString("en-GB");
+
+    renderDay("today", data.today);
+    renderDay("tomorrow", data.tomorrow);
 }
 
-// Baseline for savings
-const BASELINE = 25.65;
+function renderDay(containerId, dayData) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
 
-// Build card UI
-function buildCard(day, band, item) {
-  const container = document.getElementById(`${day}-${band}`);
+    const bands = [
+        { key: "green", label: "GREEN", class: "green" },
+        { key: "amber", label: "AMBER", class: "amber" },
+        { key: "red", label: "RED", class: "red" }
+    ];
 
-  // If null (tomorrow not yet published)
-  if (!item) {
-    container.innerHTML = `
-      <div class="band-card ${band} placeholder">
-        <span class="dot ${band}"></span> ${band.toUpperCase()}<br>
-        Awaiting publication
-      </div>
-    `;
-    return;
-  }
+    const OFFICIAL_RANGES = {
+        green: "23:00 to 06:00",
+        amber: "06:00 to 16:00, 19:00 to 23:00",
+        red: "16:00 to 19:00"
+    };
 
-  // Weighted average price
-  const price = item.price.toFixed(2);
+    bands.forEach(b => {
+        const item = dayData[b.key];
+        const box = document.createElement("div");
+        box.className = `band-box ${b.class}`;
 
-  // Savings percentage
-  const saving = ((BASELINE - item.price) / BASELINE) * 100;
-  const savingHTML =
-    saving >= 0
-      ? `<div class="saving green">▼ ${saving.toFixed(0)} percent below baseline</div>`
-      : `<div class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</div>`;
+        if (!item) {
+            box.innerHTML = `
+                <div class="band-name">${b.label}</div>
+                <div class="subtext">Awaiting publication</div>
+            `;
+        } else {
+            box.innerHTML = `
+                <div class="band-name">${b.label}</div>
+                <div class="price">${item.price.toFixed(2)}p per kWh</div>
+                <div class="range">${OFFICIAL_RANGES[b.key]}</div>
+                <div class="subtext">${percentDelta(item.price)}</div>
+            `;
+        }
 
-  // Dual amber windows (start_list / end_list)
-  let windowHTML = "";
-  if (item.start_list && item.start_list.length > 0) {
-    for (let i = 0; i < item.start_list.length; i++) {
-      windowHTML += `
-        <div>${formatTime(item.start_list[i])} to ${formatTime(item.end_list[i])}</div>
-      `;
-    }
-  }
-
-  container.innerHTML = `
-    <div class="band-card ${band}" id="${day}-${band}-card">
-      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
-      <div class="price">${price}p per kWh</div>
-      ${windowHTML}
-      ${savingHTML}
-    </div>
-  `;
-}
-
-// Highlight active band
-function highlightCurrentBand(data) {
-  const now = new Date();
-
-  ["green", "amber", "red"].forEach(band => {
-    const item = data.today[band];
-    if (!item || !item.start_list) return;
-
-    for (let i = 0; i < item.start_list.length; i++) {
-      const start = new Date(item.start_list[i]);
-      const end = new Date(item.end_list[i]);
-      if (now >= start && now <= end) {
-        const card = document.getElementById(`today-${band}-card`);
-        if (card) card.classList.add("current");
-      }
-    }
-  });
-}
-
-// Load JSON
-fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json")
-  .then(r => r.json())
-  .then(data => {
-
-    ["today", "tomorrow"].forEach(day => {
-      ["green", "amber", "red"].forEach(band => {
-        buildCard(day, band, data[day][band]);
-      });
+        container.appendChild(box);
     });
+}
 
-    highlightCurrentBand(data);
-  })
-  .catch(err => console.error("Error loading data", err));
+function percentDelta(value) {
+    const baseline = 25.65; // standard variable price
+    const diff = ((value - baseline) / baseline) * 100;
+    const rounded = Math.abs(diff).toFixed(0);
 
+    if (diff < 0) return `▼ ${rounded} percent below baseline`;
+    if (diff > 0) return `▲ ${rounded} percent above baseline`;
+    return "Same as baseline";
+}
+
+loadData();
 </script>
+
 </body>
 </html>
