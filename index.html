@@ -159,15 +159,24 @@ function buildCard(day, band, item) {
       ? `<span class="saving green">▼ ${saving.toFixed(0)} percent below baseline</span>`
       : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
 
-  container.innerHTML = `
-    <div class="band-card ${band}" id="${day}-${band}-card">
-      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
-      <div class="price">${item.price.toFixed(2)}p per kWh</div>
-      <div>${formatTime(item.start)} to ${formatTime(item.end)}</div>
-      ${savingText}
-    </div>
-  `;
+let rangeText;
+
+if (band === "amber" && day === "today") {
+  rangeText = "06:00 to 16:00 & 19:00 to 23:00";
+} else if (band === "amber" && day === "tomorrow") {
+  rangeText = "06:00 to 16:00 & 19:00 to 23:00";
+} else {
+  rangeText = `${formatTime(item.start)} to ${formatTime(item.end)}`;
 }
+
+container.innerHTML = `
+  <div class="band-card ${band}" id="${day}-${band}-card">
+    <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
+    <div class="price">${item.price.toFixed(2)}p per kWh</div>
+    <div>${rangeText}</div>
+    ${savingText}
+  </div>
+;
 
 // Highlight current band
 function highlightCurrentBand(data) {
