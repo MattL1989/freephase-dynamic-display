@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Editable Price Threshold</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: #eee;
+            padding: 40px;
+            text-align: center;
+        }
+        input {
+            font-size: 22px;
+            padding: 10px;
+            width: 140px;
+            text-align: center;
+            margin-top: 10px;
+        }
+        button {
+            padding: 12px 22px;
+            font-size: 18px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #0f0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Set Charging Price Threshold</h1>
+<p>Current threshold:</p>
+<h2 id="current">Loading...</h2>
+
+<input type="number" id="newValue" placeholder="Enter new value">
+<br>
+<button onclick="updateThreshold()">Save</button>
+
+<div id="status"></div>
+
+<script>
+const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+
+async function loadThreshold() {
+    const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
+        { headers: { apikey: SUPABASE_KEY } }
+    );
+    const data = await res.json();
+    document.getElementById("current").innerText = data[0]?.value ?? "Not set";
+}
+
+async function updateThreshold() {
+    const newVal = document.getElementById("newValue").value;
+
+    if (!newVal) {
+        alert("Enter a value");
+        return;
+    }
+
+    const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
+        {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                apikey: SUPABASE_KEY
+            },
+            body: JSON.stringify({ value: newVal })
+        }
+    );
+
+    if (res.ok) {
+        document.getElementById("status").innerText = "✔ Saved!";
+        loadThreshold();
+    } else {
+        document.getElementById("status").innerText = "Error saving value";
+        console.error(await res.text());
+    }
+}
+
+loadThreshold();
+</script>
+
+</body>
+</html>
