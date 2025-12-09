@@ -180,20 +180,27 @@ function buildCard(day, band, item) {
   `;
 }
 
-// Highlight current band
 function highlightCurrentBand(data) {
   const now = new Date();
 
-  ["green","amber","red"].forEach(band => {
+  // Green and Red use real ranges
+  ["green","red"].forEach(band => {
     const item = data.today[band];
     if (!item) return;
     const start = new Date(item.start);
     const end = new Date(item.end);
-    if (now >= start && now <= end) {
-      const card = document.getElementById(`today-${band}-card`);
-      if (card) card.classList.add("current");
+
+    const card = document.getElementById(`today-${band}-card`);
+    if (card && now >= start && now <= end) {
+      card.classList.add("current");
     }
   });
+
+  // Amber special handling
+  if (isNowInAmberRange()) {
+    const amberCard = document.getElementById("today-amber-card");
+    if (amberCard) amberCard.classList.add("current");
+  }
 }
 
 // Load JSON from deployed site
