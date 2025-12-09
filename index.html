@@ -258,5 +258,87 @@ fetch("data.json")
   .catch(err => console.error("Error loading data.json:", err));
 </script>
 
+<hr style="margin-top:60px; opacity:0.2;">
+
+<h2 style="margin-top:40px;">Set Charging Price Threshold</h2>
+<p>Current threshold:</p>
+<h2 id="current-threshold">Loading...</h2>
+
+<input 
+  type="number" 
+  id="new-threshold" 
+  placeholder="Enter new value"
+  style="
+    font-size:22px;
+    padding:10px;
+    width:160px;
+    text-align:center;
+    margin-top:10px;
+    border-radius:8px;
+  "
+>
+
+<br>
+
+<button
+  onclick="updateThreshold()"
+  style="
+    padding:12px 22px;
+    font-size:20px;
+    margin-top:20px;
+    cursor:pointer;
+    border-radius:8px;
+  "
+>
+  Save
+</button>
+
+<div id="threshold-status" style="margin-top:20px; font-size:18px; color:#0f0;"></div>
+
+<script>
+const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+
+async function loadThreshold() {
+    const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
+        { headers: { apikey: SUPABASE_KEY } }
+    );
+    const data = await res.json();
+    document.getElementById("current-threshold").innerText = data[0]?.value ?? "Not set";
+}
+
+async function updateThreshold() {
+    const newVal = document.getElementById("new-threshold").value;
+
+    if (!newVal) {
+        alert("Enter a value");
+        return;
+    }
+
+    const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
+        {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                apikey: SUPABASE_KEY
+            },
+            body: JSON.stringify({ value: newVal })
+        }
+    );
+
+    if (res.ok) {
+        document.getElementById("threshold-status").innerText = "✔ Saved!";
+        loadThreshold();
+    } else {
+        document.getElementById("threshold-status").innerText = "Error saving value";
+        console.error(await res.text());
+    }
+}
+
+loadThreshold();
+</script>
+  
 </body>
 </html>
