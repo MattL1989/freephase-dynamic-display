@@ -218,19 +218,19 @@ fetch("data.json")
 
     // Green Early Today (00:01–06:00)
     buildCard("today-green-early", "green",
-      todayGreenEarlyPrice, "00:01 to 06:00");
+      todayGreenEarlyPrice, "00:01 - 06:00");
 
     // Amber Today (combined)
     buildCard("today-amber", "amber",
-      todayAmberPrice, "06:00–16:00 and 19:00–23:00");
+      todayAmberPrice, "06:00 - 16:00 & 19:00 – 23:00");
 
     // Red Today
     buildCard("today-red", "red",
-      todayRedPrice, "16:00 to 19:00");
+      todayRedPrice, "16:00 - 19:00");
 
     // Green Late Today (23:00–00:00) — uses TOMORROW price
     buildCard("today-green-late", "green",
-      tomorrowGreenPrice, "23:00 to 00:00");
+      tomorrowGreenPrice, "23:00 - 00:00");
 
     // TOMORROW
     const tomorrowAmberPrice = data.tomorrow.amber.price;
@@ -238,19 +238,19 @@ fetch("data.json")
 
     // Tomorrow Green Early (00:00–06:00)
     buildCard("tomorrow-green-early", "green",
-      tomorrowGreenPrice, "00:00 to 06:00");
+      tomorrowGreenPrice, "00:00 - 06:00");
 
     // Tomorrow Amber
     buildCard("tomorrow-amber", "amber",
-      tomorrowAmberPrice, "06:00–16:00 and 19:00–23:00");
+      tomorrowAmberPrice, "06:00–16:00 & 19:00–23:00");
 
     // Tomorrow Red
     buildCard("tomorrow-red", "red",
-      tomorrowRedPrice, "16:00 to 19:00");
+      tomorrowRedPrice, "16:00 - 19:00");
 
     // Tomorrow Green Late (greyed out, unknown price)
     buildCard("tomorrow-green-late", "green",
-      null, "23:00 to 00:00", true);
+      null, "23:00 - 00:00", true);
 
     // Highlighting
     highlightWindows();
