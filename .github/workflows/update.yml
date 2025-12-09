@@ -104,10 +104,17 @@ jobs:
               }
             }' > data.json
 
-      - name: Commit updated data
+           - name: Commit updated data
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add data.json
-          git commit -m "update data" || echo "No changes to commit"
-          git push
+
+          git add data.json raw.json || true
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update prices"
+            git pull --rebase
+            git push
+          fi
