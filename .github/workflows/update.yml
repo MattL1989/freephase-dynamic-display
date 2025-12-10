@@ -18,8 +18,8 @@ jobs:
 
       - name: Install jq
         run: |
-          sudo apt update
-          sudo apt install -y jq
+          sudo apt-get update
+          sudo apt-get install -y jq
 
       - name: Fetch rates
         run: |
@@ -27,21 +27,19 @@ jobs:
 
           API="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
 
-          TODAY_DATE=$(date -u +"%Y-%m-%d")
-          TOMORROW_DATE=$(date -u -d "+1 day" +"%Y-%m-%d")
-          DAY_AFTER_DATE=$(date -u -d "+2 days" +"%Y-%m-%d")
-          YESTERDAY_DATE=$(date -u -d "yesterday" +"%Y-%m-%d")
+          TODAY=$(date -u +"%Y-%m-%d")
+          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
+          YESTERDAY=$(date -u -d "yesterday" +"%Y-%m-%d")
+          DAY_AFTER=$(date -u -d "+2 days" +"%Y-%m-%d")
 
-          PERIOD_FROM="${YESTERDAY_DATE}T00:00:00Z"
-          PERIOD_TO="${DAY_AFTER_DATE}T23:59:59Z"
+          PERIOD_FROM="${YESTERDAY}T00:00:00Z"
+          PERIOD_TO="${DAY_AFTER}T23:59:59Z"
 
           curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
 
-          # SAFETY CHECK:
-          # If EDF returns 0 results (tomorrow not published or API error),
-          # do NOT overwrite data.json — keep previous values.
-          if ! jq -e '.results | length > 0' raw.json >/dev/null 2>&1; then
-            echo "EDF returned no valid results — keeping previous data.json"
+          # Gracefully allow empty EDF windows
+          if ! jq -e '.results' raw.json >/dev/null 2>&1; then
+            echo '{"today":{"green":null,"amber":null,"red":null},"tomorrow":{"green":null,"amber":null,"red":null}}' > data.json
             exit 0
           fi
 
@@ -56,41 +54,42 @@ jobs:
                   (
                     . as $items
                     | {
-                        band:
-                          (
-                            # EDF values are already in pence
-                            if ($items | map(.value_inc_vat) | add / length) < 20
-                              then "green"
-                            elif ($items | map(.value_inc_vat) | add / length) < 30
-                              then "amber"
-                            else "red"
-                            end
-                          ),
-
+                        # EDF returns pence, keep pence
                         price: ($items | map(.value_inc_vat) | add / length),
                         start: ($items | map(.valid_from) | min),
-                        end: ($items | map(.valid_to) | max)
+                        end: ($items | map(.valid_to) | max),
+
+                        band:
+                          (if (($items | map(.value_inc_vat) | add / length) / 100) < 0.20
+                            then "green"
+                           elif (($items | map(.value_inc_vat) | add / length) / 100) < 0.30
+                            then "amber"
+                           else "red"
+                          end)
                       }
                   )
                 end
             ' raw.json
           }
 
-          # Today's bands
-          GREEN_T_START="${YESTERDAY_DATE}T23:00:00Z"
-          GREEN_T_END="${TODAY_DATE}T06:00:00Z"
-          AMBER_T_START="${TODAY_DATE}T06:00:00Z"
-          AMBER_T_END="${TODAY_DATE}T16:00:00Z"
-          RED_T_START="${TODAY_DATE}T16:00:00Z"
-          RED_T_END="${TODAY_DATE}T19:00:00Z"
+          # Time windows
+          GREEN_T_START="${YESTERDAY}T23:00:00Z"
+          GREEN_T_END="${TODAY}T06:00:00Z"
 
-          # Tomorrow bands
-          GREEN_TM_START="${TODAY_DATE}T23:00:00Z"
-          GREEN_TM_END="${TOMORROW_DATE}T06:00:00Z"
-          AMBER_TM_START="${TOMORROW_DATE}T06:00:00Z"
-          AMBER_TM_END="${TOMORROW_DATE}T16:00:00Z"
-          RED_TM_START="${TOMORROW_DATE}T16:00:00Z"
-          RED_TM_END="${TOMORROW_DATE}T19:00:00Z"
+          AMBER_T_START="${TODAY}T06:00:00Z"
+          AMBER_T_END="${TODAY}T16:00:00Z"
+
+          RED_T_START="${TODAY}T16:00:00Z"
+          RED_T_END="${TODAY}T19:00:00Z"
+
+          GREEN_TM_START="${TODAY}T23:00:00Z"
+          GREEN_TM_END="${TOMORROW}T06:00:00Z"
+
+          AMBER_TM_START="${TOMORROW}T06:00:00Z"
+          AMBER_TM_END="${TOMORROW}T16:00:00Z"
+
+          RED_TM_START="${TOMORROW}T16:00:00Z"
+          RED_TM_END="${TOMORROW}T19:00:00Z"
 
           jq -n \
             --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
