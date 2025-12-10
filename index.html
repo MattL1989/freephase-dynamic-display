@@ -1,104 +1,110 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>EDF FreePhase Dynamic</title>
+  <meta charset="UTF-8">
+  <title>EDF FreePhase Dynamic</title>
 
-<style>
-  body {
-    background: #000;
-    color: #fff;
-    font-family: "Segoe UI", Arial, sans-serif;
-    text-align: center;
-    margin: 0;
-    padding: 0;
-  }
+  <style>
+    body {
+      background: #000;
+      color: #fff;
+      font-family: "Segoe UI", Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
 
-  header {
-    padding: 30px 0 10px 0;
-  }
+    header {
+      padding: 30px 0 10px 0;
+    }
 
-  h1 {
-    font-size: 42px;
-    font-weight: 600;
-    margin-bottom: 5px;
-  }
+    h1 {
+      font-size: 42px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
 
-  .clock {
-    font-size: 18px;
-    color: #bbb;
-    margin-bottom: 25px;
-  }
+    .clock {
+      font-size: 18px;
+      color: #bbb;
+      margin-bottom: 25px;
+    }
 
-  h2 {
-    font-size: 28px;
-    margin: 30px 0 10px 0;
-    font-weight: 500;
-  }
+    h2 {
+      font-size: 28px;
+      margin: 30px 0 10px 0;
+      font-weight: 500;
+    }
 
-  .band-card {
-    width: 90%;
-    margin: 15px auto;
-    padding: 25px;
-    border-radius: 18px;
-    color: white;
-    font-size: 26px;
-    box-shadow: 0px 0px 25px rgba(0,0,0,0.4);
-    position: relative;
-    transition: transform 0.3s, opacity 0.3s;
-  }
+    .band-card {
+      width: 90%;
+      margin: 15px auto;
+      padding: 25px;
+      border-radius: 18px;
+      color: white;
+      font-size: 26px;
+      box-shadow: 0 0 25px rgba(0,0,0,0.4);
+      position: relative;
+      transition: transform 0.3s, opacity 0.3s;
+    }
 
-  .band-card.current {
-    transform: scale(1.04);
-    box-shadow: 0 0 35px rgba(255,255,255,0.25);
-    border: 2px solid white;
-  }
+    .band-card.current {
+      transform: scale(1.04);
+      box-shadow: 0 0 35px rgba(255,255,255,0.25);
+      border: 2px solid white;
+    }
 
-  .dot {
-    height: 18px;
-    width: 18px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-right: 10px;
-    vertical-align: middle;
-  }
+    .dot {
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
 
-  .green { background: #1f8f2e; }
-  .amber { background: #c9a200; }
-  .red { background: #b00000; }
+    .green { background: #1f8f2e; }
+    .amber { background: #c9a200; }
+    .red { background: #b00000; }
 
-  .dot.green { background: #58d46d; }
-  .dot.amber { background: #ffd84a; }
-  .dot.red { background: #ff4c4c; }
+    .dot.green { background: #58d46d; }
+    .dot.amber { background: #ffd84a; }
+    .dot.red { background: #ff4c4c; }
 
-  .price {
-    font-size: 34px;
-    font-weight: bold;
-    margin: 8px 0;
-  }
+    .price {
+      font-size: 34px;
+      font-weight: bold;
+      margin: 8px 0;
+    }
 
-  .saving {
-    margin-top: 5px;
-    font-size: 18px;
-  }
+    .saving {
+      margin-top: 5px;
+      font-size: 18px;
+    }
 
-  .saving.green { color: #58d46d; }
-  .saving.red { color: #ff4c4c; }
+    .saving.green { color: #58d46d; }
+    .saving.red { color: #ff4c4c; }
 
-  footer {
-    margin-top: 40px;
-    padding: 20px;
-    font-size: 16px;
-    color: #666;
-  }
+    .placeholder {
+      opacity: 0.4;
+      font-size: 22px;
+    }
 
-  .placeholder {
-    opacity: 0.4;
-    font-size: 22px;
-  }
-</style>
+    /* grey tomorrow green late */
+    .band-card.greyed {
+      opacity: 0.35;
+      border: 2px dashed #666;
+    }
 
+    footer {
+      margin-top: 50px;
+      padding: 20px;
+      font-size: 16px;
+      color: #666;
+    }
+  </style>
 </head>
+
 <body>
 
 <header>
@@ -118,183 +124,185 @@
 <div id="tomorrow-red"></div>
 <div id="tomorrow-green-late"></div>
 
-<footer>
-  EDF FreePhase Display by Matt Lewis • Auto updated hourly via GitHub Actions
-</footer>
-
 <script>
+// live clock
 function updateClock() {
   document.getElementById("clock").textContent =
-    new Date().toLocaleString("en GB");
+    new Date().toLocaleString("en-GB");
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-function formatTime(iso) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en GB", { hour: "2 digit", minute: "2 digit" });
-}
-
 const BASELINE = 25.65;
 
-function buildCard(id, colour, label, item, fixedRange=null) {
-  const el = document.getElementById(id);
+// build a band card
+function buildCard(containerId, band, price, timeRange, greyedOut = false) {
+  const container = document.getElementById(containerId);
 
-  if (!item) {
-    el.innerHTML = `
-      <div class="band-card ${colour} placeholder">
-        <span class="dot ${colour}"></span> ${label}<br>
-        <div>Price not yet published</div>
-        <div>${fixedRange ?? ""}</div>
-      </div>
-    `;
-    return;
-  }
-
-  const price = item.price;
-  const saving = ((BASELINE - price) / BASELINE) * 100;
-  const savingText = saving >= 0
-    ? `<span class="saving green">▼ ${saving.toFixed(0)} percent below baseline</span>`
-    : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
-
-  const timeRange = fixedRange ??
-    `${formatTime(item.start)} to ${formatTime(item.end)}`;
-
-  el.innerHTML = `
-    <div class="band-card ${colour}" id="${id}-card">
-      <span class="dot ${colour}"></span> ${label}<br>
-      <div class="price">${price.toFixed(2)}p per kWh</div>
+  container.innerHTML = `
+    <div class="band-card ${band} ${greyedOut ? "greyed" : ""}" id="${containerId}-card">
+      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
+      ${
+        price !== null
+          ? `<div class="price">${price.toFixed(2)}p per kWh</div>`
+          : `<div class="price">Price not yet published</div>`
+      }
       <div>${timeRange}</div>
-      ${savingText}
+      ${
+        price !== null
+          ? savingText(price)
+          : `<div class="saving">Awaiting publication</div>`
+      }
     </div>
   `;
 }
 
-function highlightToday(data) {
-  const now = new Date();
-  const check = (id, item) => {
-    if (!item) return;
-    const s = new Date(item.start);
-    const e = new Date(item.end);
-    if (now >= s && now <= e) {
-      const card = document.getElementById(id);
-      if (card) card.classList.add("current");
-    }
-  };
-
-  check("today-green-early-card", data.greenEarly);
-  check("today-amber-card", data.amber);
-  check("today-red-card", data.red);
-  check("today-green-late-card", data.greenLate);
+function savingText(price) {
+  const saving = ((BASELINE - price) / BASELINE) * 100;
+  return saving >= 0
+    ? `<span class="saving green">▼ ${saving.toFixed(0)} percent below baseline</span>`
+    : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
 }
 
+// highlight logic based on local time, not API times
+function highlightWindows() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+
+  const within = (startH, startM, endH, endM) => {
+    const nowM = h * 60 + m;
+    return nowM >= startH * 60 + startM && nowM < endH * 60 + endM;
+  };
+
+  // today green early: 00:01–06:00
+  if (within(0, 1, 6, 0)) highlight("today-green-early");
+
+  // today amber: 06:00–16:00 or 19:00–23:00
+  if (within(6, 0, 16, 0) || within(19, 0, 23, 0)) highlight("today-amber");
+
+  // today red: 16:00–19:00
+  if (within(16, 0, 19, 0)) highlight("today-red");
+
+  // today green late: 23:00–24:00
+  if (within(23, 0, 24, 0)) highlight("today-green-late");
+
+  // tomorrow green early: 00:00–06:00 (only between midnight and 06:00)
+  if (within(0, 0, 6, 0)) highlight("tomorrow-green-early");
+}
+
+function highlight(id) {
+  const card = document.getElementById(id + "-card");
+  if (card) card.classList.add("current");
+}
+
+// main load
 fetch("data.json")
   .then(r => r.json())
   .then(data => {
+    // today
+    const todayGreenEarlyPrice = data.today.green.price;
+    const todayAmberPrice      = data.today.amber.price;
+    const todayRedPrice        = data.today.red.price;
 
-    buildCard(
-      "today-green-early", "green", "GREEN",
-      data.today.green,
-      "00:01 to 06:00"
-    );
+    // tomorrow early green price (also used for today 23:00–00:00)
+    const tomorrowGreenPrice   = data.tomorrow.green
+      ? data.tomorrow.green.price
+      : null;
 
-    buildCard(
-      "today-amber", "amber", "AMBER",
-      data.today.amber,
-      "06:00 to 16:00 and 19:00 to 23:00"
-    );
+    // green early today 00:01–06:00
+    buildCard("today-green-early", "green",
+      todayGreenEarlyPrice, "00:01 - 06:00");
 
-    buildCard(
-      "today-red", "red", "RED",
-      data.today.red,
-      "16:00 to 19:00"
-    );
+    // amber today combined
+    buildCard("today-amber", "amber",
+      todayAmberPrice, "06:00 - 16:00 and 19:00 - 23:00");
 
-    buildCard(
-      "today-green-late", "green", "GREEN",
-      data.tomorrow.green,
-      "23:00 to 00:00"
-    );
+    // red today
+    buildCard("today-red", "red",
+      todayRedPrice, "16:00 - 19:00");
 
-    buildCard(
-      "tomorrow-green-early", "green", "GREEN",
-      data.tomorrow.green,
-      "00:01 to 06:00"
-    );
+    // green late today 23:00–00:00 uses tomorrow green if known
+    buildCard("today-green-late", "green",
+      tomorrowGreenPrice, "23:00 - 00:00");
 
-    buildCard(
-      "tomorrow-amber", "amber", "AMBER",
-      data.tomorrow.amber,
-      "06:00 to 16:00 and 19:00 to 23:00"
-    );
+    // tomorrow bands (may be null if not published yet)
+    const tomorrowAmberPrice = data.tomorrow.amber
+      ? data.tomorrow.amber.price
+      : null;
+    const tomorrowRedPrice = data.tomorrow.red
+      ? data.tomorrow.red.price
+      : null;
 
-    buildCard(
-      "tomorrow-red", "red", "RED",
-      data.tomorrow.red,
-      "16:00 to 19:00"
-    );
+    // tomorrow green early 00:01–06:00
+    buildCard("tomorrow-green-early", "green",
+      tomorrowGreenPrice, "00:01 - 06:00");
 
-    buildCard(
-      "tomorrow-green-late", "green", "GREEN",
-      null,
-      "23:00 to 00:00"
-    );
+    // tomorrow amber
+    buildCard("tomorrow-amber", "amber",
+      tomorrowAmberPrice, "06:00 - 16:00 and 19:00 - 23:00");
 
-    highlightToday({
-      greenEarly: data.today.green,
-      amber: data.today.amber,
-      red: data.today.red,
-      greenLate: data.tomorrow.green
-    });
-  });
+    // tomorrow red
+    buildCard("tomorrow-red", "red",
+      tomorrowRedPrice, "16:00 - 19:00");
+
+    // tomorrow green late 23:00–00:00 greyed out (always placeholder)
+    buildCard("tomorrow-green-late", "green",
+      null, "23:00 - 00:00", true);
+
+    // add highlight class
+    highlightWindows();
+  })
+  .catch(err => console.error("Error loading data.json:", err));
 </script>
 
-<!-- Threshold section restored -->
-<meta charset="UTF-8">
-<title>Editable Price Threshold</title>
-<style>
-  #threshold-box {
-    background: #111;
-    padding: 40px;
-    margin-top: 20px;
-    border-top: 2px solid #333;
-  }
-  #newValue {
-    font-size: 26px;
-    padding: 12px;
-    width: 260px;
-    text-align: center;
-    border-radius: 12px;
-    border: 2px solid #444;
-    background: #222;
-    color: #fff;
-  }
-  button {
-    margin-top: 20px;
-    font-size: 20px;
-    padding: 12px 22px;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-</style>
+<hr style="margin-top:60px; opacity:0.2;">
 
-<div id="threshold-box">
-  <h1>Set Charging Price Threshold</h1>
-  <p>Current threshold:</p>
-  <h2 id="current">Loading...</h2>
+<h2 style="margin-top:40px;">Set Charging Price Threshold</h2>
+<p>Current threshold:</p>
+<h2 id="current-threshold">Loading...</h2>
 
-  <input type="number" id="newValue" placeholder="Enter new value">
-  <br>
-  <button onclick="updateThreshold()">Save</button>
+<input
+  type="number"
+  id="new-threshold"
+  placeholder="Enter new value"
+  style="
+    font-size:26px;
+    padding:14px;
+    width:260px;
+    text-align:center;
+    margin-top:10px;
+    border-radius:12px;
+    border:2px solid #444;
+    background:#222;
+    color:#fff;
+    box-shadow:0 0 12px rgba(255,255,255,0.15);
+  "
+>
 
-  <div id="status"></div>
-</div>
+<br>
+
+<button
+  onclick="updateThreshold()"
+  style="
+    padding:14px 28px;
+    font-size:22px;
+    margin-top:25px;
+    cursor:pointer;
+    border-radius:12px;
+    background:#fff;
+    color:#000;
+    border:none;
+  "
+>
+  Save
+</button>
+
+<div id="threshold-status" style="margin-top:25px; font-size:20px; color:#0f0;"></div>
 
 <script>
-const SUPABASE_URL =
-"https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY =
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 async function loadThreshold() {
   const res = await fetch(
@@ -302,12 +310,12 @@ async function loadThreshold() {
     { headers: { apikey: SUPABASE_KEY } }
   );
   const data = await res.json();
-  document.getElementById("current").innerText =
+  document.getElementById("current-threshold").innerText =
     data[0]?.value ?? "Not set";
 }
 
 async function updateThreshold() {
-  const newVal = document.getElementById("newValue").value;
+  const newVal = document.getElementById("new-threshold").value;
 
   if (!newVal) {
     alert("Enter a value");
@@ -319,7 +327,7 @@ async function updateThreshold() {
     {
       method: "PATCH",
       headers: {
-        "Content Type": "application/json",
+        "Content-Type": "application/json",
         apikey: SUPABASE_KEY
       },
       body: JSON.stringify({ value: newVal })
@@ -327,16 +335,21 @@ async function updateThreshold() {
   );
 
   if (res.ok) {
-    document.getElementById("status").innerText = "Saved.";
+    document.getElementById("threshold-status").innerText = "Saved.";
     loadThreshold();
   } else {
-    document.getElementById("status").innerText =
+    document.getElementById("threshold-status").innerText =
       "Error saving value";
+    console.error(await res.text());
   }
 }
 
 loadThreshold();
 </script>
+
+<footer>
+  EDF FreePhase Display by Matt Lewis • Auto-updated hourly via GitHub Actions
+</footer>
 
 </body>
 </html>
