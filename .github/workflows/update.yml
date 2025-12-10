@@ -35,12 +35,13 @@ jobs:
           PERIOD_FROM="${YESTERDAY_DATE}T00:00:00Z"
           PERIOD_TO="${DAY_AFTER_DATE}T23:59:59Z"
 
-          curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
+        curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
 
-          if ! jq -e '.results' raw.json >/dev/null 2>&1; then
-            echo "Invalid EDF response"
-            exit 1
-          fi
+        # If EDF returns nothing (eg. tomorrow not published yet), keep the old data.json
+        if ! jq -e '.results | length > 0' raw.json >/dev/null 2>&1; then
+          echo "EDF returned no results — keeping existing data.json"
+          exit 0
+        fi
 
           extract_band() {
             local start=$1
