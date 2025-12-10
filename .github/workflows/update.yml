@@ -55,18 +55,14 @@ jobs:
                     | {
                         band:
                           (
-                            # FIXED: EDF returns pence → convert to pounds for band rules
-                            if (($items | map(.value_inc_vat) | add / length) / 100) < 0.20
-                              then "green"
-                            elif (($items | map(.value_inc_vat) | add / length) / 100) < 0.30
-                              then "amber"
+                            # EDF gives value_inc_vat in pence, convert to pounds for banding
+                            if (($items | map(.value_inc_vat) | add / length) / 100) < 0.20 then "green"
+                            elif (($items | map(.value_inc_vat) | add / length) / 100) < 0.30 then "amber"
                             else "red"
                             end
                           ),
-
-                        # Keep price in pence for UI display
+                        # keep price in pence for the UI
                         price: ($items | map(.value_inc_vat) | add / length),
-
                         start: ($items | map(.valid_from) | min),
                         end: ($items | map(.valid_to) | max)
                       }
@@ -75,7 +71,7 @@ jobs:
             ' raw.json
           }
 
-          # Today's bands
+          # today bands
           GREEN_T_START="${YESTERDAY_DATE}T23:00:00Z"
           GREEN_T_END="${TODAY_DATE}T06:00:00Z"
           AMBER_T_START="${TODAY_DATE}T06:00:00Z"
@@ -83,7 +79,7 @@ jobs:
           RED_T_START="${TODAY_DATE}T16:00:00Z"
           RED_T_END="${TODAY_DATE}T19:00:00Z"
 
-          # Tomorrow bands
+          # tomorrow bands
           GREEN_TM_START="${TODAY_DATE}T23:00:00Z"
           GREEN_TM_END="${TOMORROW_DATE}T06:00:00Z"
           AMBER_TM_START="${TOMORROW_DATE}T06:00:00Z"
@@ -94,10 +90,10 @@ jobs:
           jq -n \
             --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
             --argjson tamber "$(extract_band "$AMBER_T_START" "$AMBER_T_END")" \
-            --argjson tred "$(extract_band "$RED_T_START" "$RED_T_END")" \
+            --argjson tred   "$(extract_band "$RED_T_START" "$RED_T_END")" \
             --argjson tmgreen "$(extract_band "$GREEN_TM_START" "$GREEN_TM_END")" \
             --argjson tmamber "$(extract_band "$AMBER_TM_START" "$AMBER_TM_END")" \
-            --argjson tmred "$(extract_band "$RED_TM_START" "$RED_TM_END")" \
+            --argjson tmred   "$(extract_band "$RED_TM_START" "$RED_TM_END")" \
             '{
               today: {
                 green: $tgreen,
@@ -115,13 +111,11 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-
           git add data.json raw.json || true
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Update prices"
-            git pull --rebase origin main
-            git push origin main
+            git push
           fi
