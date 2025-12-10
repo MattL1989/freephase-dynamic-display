@@ -35,7 +35,7 @@ jobs:
           PERIOD_FROM="${YESTERDAY_DATE}T00:00:00Z"
           PERIOD_TO="${DAY_AFTER_DATE}T23:59:59Z"
 
-        curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
+curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
 
         # If EDF returns nothing (eg. tomorrow not published yet), keep the old data.json
         if ! jq -e '.results | length > 0' raw.json >/dev/null 2>&1; then
