@@ -139,17 +139,21 @@ const BASELINE = 25.65;
 function buildCard(containerId, band, price, timeRange, greyedOut = false) {
   const container = document.getElementById(containerId);
 
+  // grey out automatically if there is no price yet
+  const isPending = (price === null || price === undefined);
+  const classes = `band-card ${band} ${(greyedOut || isPending) ? "greyed" : ""}`;
+
   container.innerHTML = `
-    <div class="band-card ${band} ${greyedOut ? "greyed" : ""}" id="${containerId}-card">
+    <div class="${classes}" id="${containerId}-card">
       <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
       ${
-        price !== null
+        !isPending
           ? `<div class="price">${price.toFixed(2)}p per kWh</div>`
           : `<div class="price">Price not yet published</div>`
       }
       <div>${timeRange}</div>
       ${
-        price !== null
+        !isPending
           ? savingText(price)
           : `<div class="saving">Awaiting publication</div>`
       }
