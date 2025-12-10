@@ -54,11 +54,19 @@ jobs:
                     . as $items
                     | {
                         band:
-                          (if ($items | map(.value_inc_vat) | add / length) < 0.20 then "green"
-                           elif ($items | map(.value_inc_vat) | add / length) < 0.30 then "amber"
-                           else "red"
-                          end),
+                          (
+                            # FIXED: EDF returns pence → convert to pounds for band rules
+                            if (($items | map(.value_inc_vat) | add / length) / 100) < 0.20
+                              then "green"
+                            elif (($items | map(.value_inc_vat) | add / length) / 100) < 0.30
+                              then "amber"
+                            else "red"
+                            end
+                          ),
+
+                        # Keep price in pence for UI display
                         price: ($items | map(.value_inc_vat) | add / length),
+
                         start: ($items | map(.valid_from) | min),
                         end: ($items | map(.valid_to) | max)
                       }
