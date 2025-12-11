@@ -37,7 +37,7 @@
     }
 
     .band-card {
-      width: 90%;
+      width: 90 percent;
       margin: 15px auto;
       padding: 25px;
       border-radius: 18px;
@@ -45,7 +45,7 @@
       font-size: 26px;
       box-shadow: 0 0 25px rgba(0,0,0,0.4);
       position: relative;
-      transition: transform 0.3s, opacity 0.3s;
+      transition: transform .3s, opacity .3s;
     }
 
     .band-card.current {
@@ -57,7 +57,7 @@
     .dot {
       height: 18px;
       width: 18px;
-      border-radius: 50%;
+      border-radius: 50 percent;
       display: inline-block;
       margin-right: 10px;
       vertical-align: middle;
@@ -85,14 +85,8 @@
     .saving.green { color: #58d46d; }
     .saving.red { color: #ff4c4c; }
 
-    .placeholder {
-      opacity: 0.4;
-      font-size: 22px;
-    }
-
-    /* grey tomorrow green late */
     .band-card.greyed {
-      opacity: 0.35;
+      opacity: .35;
       border: 2px dashed #666;
     }
 
@@ -125,6 +119,17 @@
 <div id="tomorrow-green-late"></div>
 
 <script>
+// Option A: force one-time reload if JSON has changed
+(function ensureFresh() {
+  const marker = localStorage.getItem("last-json-version");
+  const nowMarker = String(new Date().getDate()) + "-" + String(new Date().getHours());
+
+  if (marker !== nowMarker) {
+    localStorage.setItem("last-json-version", nowMarker);
+    window.location.reload(true);
+  }
+})();
+
 // live clock
 function updateClock() {
   document.getElementById("clock").textContent =
@@ -135,27 +140,25 @@ updateClock();
 
 const BASELINE = 25.65;
 
-// build a band card
-function buildCard(containerId, band, price, timeRange, greyedOut = false) {
-  const container = document.getElementById(containerId);
+// reusable card builder
+function buildCard(containerId, band, price, timeRange, forceGrey = false) {
+  const el = document.getElementById(containerId);
+  const isPending = price === null || price === undefined;
+  const greyClass = isPending || forceGrey ? "greyed" : "";
 
-  // grey out automatically if there is no price yet
-  const isPending = (price === null || price === undefined);
-  const classes = `band-card ${band} ${(greyedOut || isPending) ? "greyed" : ""}`;
-
-  container.innerHTML = `
-    <div class="${classes}" id="${containerId}-card">
+  el.innerHTML = `
+    <div class="band-card ${band} ${greyClass}" id="${containerId}-card">
       <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
       ${
-        !isPending
-          ? `<div class="price">${price.toFixed(2)}p per kWh</div>`
-          : `<div class="price">Price not yet published</div>`
+        isPending
+          ? `<div class="price">Price not yet published</div>`
+          : `<div class="price">${price.toFixed(2)}p per kWh</div>`
       }
       <div>${timeRange}</div>
       ${
-        !isPending
-          ? savingText(price)
-          : `<div class="saving">Awaiting publication</div>`
+        isPending
+          ? `<div class="saving">Awaiting publication</div>`
+          : savingText(price)
       }
     </div>
   `;
@@ -168,30 +171,19 @@ function savingText(price) {
     : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
 }
 
-// highlight logic based on local time, not API times
 function highlightWindows() {
   const now = new Date();
   const h = now.getHours();
   const m = now.getMinutes();
+  const nowM = h * 60 + m;
 
-  const within = (startH, startM, endH, endM) => {
-    const nowM = h * 60 + m;
-    return nowM >= startH * 60 + startM && nowM < endH * 60 + endM;
-  };
+  const within = (sh, sm, eh, em) =>
+    nowM >= sh * 60 + sm && nowM < eh * 60 + em;
 
-  // today green early: 00:01–06:00
   if (within(0, 1, 6, 0)) highlight("today-green-early");
-
-  // today amber: 06:00–16:00 or 19:00–23:00
   if (within(6, 0, 16, 0) || within(19, 0, 23, 0)) highlight("today-amber");
-
-  // today red: 16:00–19:00
   if (within(16, 0, 19, 0)) highlight("today-red");
-
-  // today green late: 23:00–24:00
   if (within(23, 0, 24, 0)) highlight("today-green-late");
-
-  // tomorrow green early: 00:00–06:00 (only between midnight and 06:00)
   if (within(0, 0, 6, 0)) highlight("tomorrow-green-early");
 }
 
@@ -200,64 +192,51 @@ function highlight(id) {
   if (card) card.classList.add("current");
 }
 
-// main load
-fetch("data.json?ts=" + Date.now())
-  .then(r => r.json())
-  .then(data => {
-    // today
-    const todayGreenEarlyPrice = data.today.green.price;
-    const todayAmberPrice      = data.today.amber.price;
-    const todayRedPrice        = data.today.red.price;
+// main loader
+function loadData() {
+  fetch("data.json?ts=" + Date.now())
+    .then(r => r.json())
+    .then(render)
+    .catch(err => console.error("Error loading data.json:", err));
+}
 
-    // tomorrow early green price (also used for today 23:00–00:00)
-    const tomorrowGreenPrice   = data.tomorrow.green
-      ? data.tomorrow.green.price
-      : null;
+// render UI
+function render(data) {
+  const today = data.today;
+  const tomorrow = data.tomorrow;
 
-    // green early today 00:01–06:00
-    buildCard("today-green-early", "green",
-      todayGreenEarlyPrice, "00:01 - 06:00");
+  buildCard("today-green-early", "green",
+    today.green.price, "00:01 - 06:00");
 
-    // amber today combined
-    buildCard("today-amber", "amber",
-      todayAmberPrice, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("today-amber", "amber",
+    today.amber.price, "06:00 - 16:00 and 19:00 - 23:00");
 
-    // red today
-    buildCard("today-red", "red",
-      todayRedPrice, "16:00 - 19:00");
+  buildCard("today-red", "red",
+    today.red.price, "16:00 - 19:00");
 
-    // green late today 23:00–00:00 uses tomorrow green if known
-    buildCard("today-green-late", "green",
-      tomorrowGreenPrice, "23:00 - 00:00");
+  buildCard("today-green-late", "green",
+    tomorrow.green ? tomorrow.green.price : null,
+    "23:00 - 00:00");
 
-    // tomorrow bands (may be null if not published yet)
-    const tomorrowAmberPrice = data.tomorrow.amber
-      ? data.tomorrow.amber.price
-      : null;
-    const tomorrowRedPrice = data.tomorrow.red
-      ? data.tomorrow.red.price
-      : null;
+  buildCard("tomorrow-green-early", "green",
+    tomorrow.green ? tomorrow.green.price : null,
+    "00:01 - 06:00");
 
-    // tomorrow green early 00:01–06:00
-    buildCard("tomorrow-green-early", "green",
-      tomorrowGreenPrice, "00:01 - 06:00");
+  buildCard("tomorrow-amber", "amber",
+    tomorrow.amber ? tomorrow.amber.price : null,
+    "06:00 - 16:00 and 19:00 - 23:00");
 
-    // tomorrow amber
-    buildCard("tomorrow-amber", "amber",
-      tomorrowAmberPrice, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("tomorrow-red", "red",
+    tomorrow.red ? tomorrow.red.price : null,
+    "16:00 - 19:00");
 
-    // tomorrow red
-    buildCard("tomorrow-red", "red",
-      tomorrowRedPrice, "16:00 - 19:00");
+  buildCard("tomorrow-green-late", "green",
+    null, "23:00 - 00:00", true);
 
-    // tomorrow green late 23:00–00:00 greyed out (always placeholder)
-    buildCard("tomorrow-green-late", "green",
-      null, "23:00 - 00:00", true);
+  highlightWindows();
+}
 
-    // add highlight class
-    highlightWindows();
-  })
-  .catch(err => console.error("Error loading data.json:", err));
+loadData();
 </script>
 
 <hr style="margin-top:60px; opacity:0.2;">
@@ -306,7 +285,7 @@ fetch("data.json?ts=" + Date.now())
 
 <script>
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+const SUPABASE_KEY = "YOUR_KEY_HERE";
 
 async function loadThreshold() {
   const res = await fetch(
@@ -320,11 +299,7 @@ async function loadThreshold() {
 
 async function updateThreshold() {
   const newVal = document.getElementById("new-threshold").value;
-
-  if (!newVal) {
-    alert("Enter a value");
-    return;
-  }
+  if (!newVal) return alert("Enter a value");
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
