@@ -292,6 +292,7 @@ async function loadThreshold() {
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
     { headers: { apikey: SUPABASE_KEY } }
   );
+
   const data = await res.json();
   document.getElementById("current-threshold").innerText =
     data[0]?.value ?? "Not set";
@@ -299,14 +300,18 @@ async function loadThreshold() {
 
 async function updateThreshold() {
   const newVal = document.getElementById("new-threshold").value;
-  if (!newVal) return alert("Enter a value");
+
+  if (!newVal) {
+    alert("Enter a value");
+    return;
+  }
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
     {
       method: "PATCH",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json",   // FIXED HERE
         apikey: SUPABASE_KEY
       },
       body: JSON.stringify({ value: newVal })
@@ -317,9 +322,7 @@ async function updateThreshold() {
     document.getElementById("threshold-status").innerText = "Saved.";
     loadThreshold();
   } else {
-    document.getElementById("threshold-status").innerText =
-      "Error saving value";
-    console.error(await res.text());
+    document.getElementById("threshold-status").innerText = "Error saving value";
   }
 }
 
