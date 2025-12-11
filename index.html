@@ -4,11 +4,6 @@
   <meta charset="UTF-8">
   <title>EDF FreePhase Dynamic</title>
 
-  <!-- FORCE GITHUB PAGES TO ALWAYS LOAD LATEST VERSION -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-
   <style>
     body {
       background: #000;
@@ -139,6 +134,31 @@ updateClock();
 
 const BASELINE = 25.65;
 
+// build a band card
+function buildCard(containerId, band, price, timeRange, greyedOut = false) {
+  const container = document.getElementById(containerId);
+  const isPending = (price === null || price === undefined);
+
+  const classes = `band-card ${band} ${(greyedOut || isPending) ? "greyed" : ""}`;
+
+  container.innerHTML = `
+    <div class="${classes}" id="${containerId}-card">
+      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
+      ${
+        !isPending
+          ? `<div class="price">${price.toFixed(2)}p per kWh</div>`
+          : `<div class="price">Price not yet published</div>`
+      }
+      <div>${timeRange}</div>
+      ${
+        !isPending
+          ? savingText(price)
+          : `<div class="saving">Awaiting publication</div>`
+      }
+    </div>
+  `;
+}
+
 function savingText(price) {
   const saving = ((BASELINE - price) / BASELINE) * 100;
   return saving >= 0
@@ -146,37 +166,14 @@ function savingText(price) {
     : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
 }
 
-function buildCard(containerId, band, price, timeRange, greyedOut = false) {
-  const container = document.getElementById(containerId);
-
-  const isPending = (price === null || price === undefined);
-  const classes = `band-card ${band} ${(greyedOut || isPending) ? "greyed" : ""}`;
-
-  container.innerHTML = `
-    <div class="${classes}" id="${containerId}-card">
-      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
-      ${!isPending ? `<div class="price">${price.toFixed(2)}p per kWh</div>` 
-                   : `<div class="price">Price not yet published</div>`}
-      <div>${timeRange}</div>
-      ${!isPending ? savingText(price) 
-                   : `<div class="saving">Awaiting publication</div>`}
-    </div>
-  `;
-}
-
-function highlight(id) {
-  const card = document.getElementById(id + "-card");
-  if (card) card.classList.add("current");
-}
-
 function highlightWindows() {
   const now = new Date();
   const h = now.getHours();
   const m = now.getMinutes();
 
-  const within = (sh, sm, eh, em) => {
+  const within = (startH, startM, endH, endM) => {
     const nowM = h * 60 + m;
-    return nowM >= sh * 60 + sm && nowM < eh * 60 + em;
+    return nowM >= startH * 60 + startM && nowM < endH * 60 + endM;
   };
 
   if (within(0, 1, 6, 0)) highlight("today-green-early");
@@ -186,50 +183,36 @@ function highlightWindows() {
   if (within(0, 0, 6, 0)) highlight("tomorrow-green-early");
 }
 
+function highlight(id) {
+  const card = document.getElementById(id + "-card");
+  if (card) card.classList.add("current");
+}
+
+// main load
 fetch("data.json?ts=" + Date.now())
   .then(r => r.json())
   .then(data => {
-
     const todayGreenEarlyPrice = data.today.green.price;
     const todayAmberPrice      = data.today.amber.price;
     const todayRedPrice        = data.today.red.price;
+    const tomorrowGreenPrice   = data.tomorrow.green ? data.tomorrow.green.price : null;
 
-    const tomorrowGreenPrice   = data.tomorrow.green
-      ? data.tomorrow.green.price
-      : null;
-    const tomorrowAmberPrice   = data.tomorrow.amber
-      ? data.tomorrow.amber.price
-      : null;
-    const tomorrowRedPrice     = data.tomorrow.red
-      ? data.tomorrow.red.price
-      : null;
+    buildCard("today-green-early", "green", todayGreenEarlyPrice, "00:01 - 06:00");
+    buildCard("today-amber", "amber", todayAmberPrice, "06:00 - 16:00 & 19:00 - 23:00");
+    buildCard("today-red", "red", todayRedPrice, "16:00 - 19:00");
+    buildCard("today-green-late", "green", tomorrowGreenPrice, "23:00 - 00:00");
 
-    buildCard("today-green-early", "green", todayGreenEarlyPrice,
-      "00:01 - 06:00");
+    const tomorrowAmberPrice = data.tomorrow.amber ? data.tomorrow.amber.price : null;
+    const tomorrowRedPrice   = data.tomorrow.red ? data.tomorrow.red.price : null;
 
-    buildCard("today-amber", "amber", todayAmberPrice,
-      "06:00 - 16:00 & 19:00 - 23:00");
-
-    buildCard("today-red", "red", todayRedPrice,
-      "16:00 - 19:00");
-
-    buildCard("today-green-late", "green", tomorrowGreenPrice,
-      "23:00 - 00:00");
-
-    buildCard("tomorrow-green-early", "green", tomorrowGreenPrice,
-      "00:01 - 06:00");
-
-    buildCard("tomorrow-amber", "amber", tomorrowAmberPrice,
-      "06:00 - 16:00 & 19:00 - 23:00");
-
-    buildCard("tomorrow-red", "red", tomorrowRedPrice,
-      "16:00 - 19:00");
-
-    buildCard("tomorrow-green-late", "green", null,
-      "23:00 - 00:00", true);
+    buildCard("tomorrow-green-early", "green", tomorrowGreenPrice, "00:01 - 06:00");
+    buildCard("tomorrow-amber", "amber", tomorrowAmberPrice, "06:00 - 16:00 & 19:00 - 23:00");
+    buildCard("tomorrow-red", "red", tomorrowRedPrice, "16:00 - 19:00");
+    buildCard("tomorrow-green-late", "green", null, "23:00 - 00:00", true);
 
     highlightWindows();
-  });
+  })
+  .catch(err => console.error("Error loading data.json:", err));
 </script>
 
 <hr style="margin-top:60px; opacity:0.2;">
@@ -270,20 +253,24 @@ fetch("data.json?ts=" + Date.now())
     color:#000;
     border:none;
   "
->
-  Save
-</button>
+>Save</button>
 
 <div id="threshold-status" style="margin-top:25px; font-size:20px; color:#0f0;"></div>
 
 <script>
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+const SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 async function loadThreshold() {
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
-    { headers: { apikey: SUPABASE_KEY } }
+    {
+      headers: {
+        apikey: SUPABASE_KEY,
+        "Content-Type": "application/json"
+      }
+    }
   );
 
   const data = await res.json();
@@ -304,8 +291,8 @@ async function updateThreshold() {
     {
       method: "PATCH",
       headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY
+        apikey: SUPABASE_KEY,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({ value: newVal })
     }
