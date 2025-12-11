@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <title>EDF FreePhase Dynamic</title>
 
+  <!-- FORCE GITHUB PAGES TO ALWAYS LOAD LATEST VERSION -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
   <style>
     body {
       background: #000;
@@ -37,7 +42,7 @@
     }
 
     .band-card {
-      width: 90 percent;
+      width: 90%;
       margin: 15px auto;
       padding: 25px;
       border-radius: 18px;
@@ -45,7 +50,7 @@
       font-size: 26px;
       box-shadow: 0 0 25px rgba(0,0,0,0.4);
       position: relative;
-      transition: transform .3s, opacity .3s;
+      transition: transform 0.3s, opacity 0.3s;
     }
 
     .band-card.current {
@@ -57,7 +62,7 @@
     .dot {
       height: 18px;
       width: 18px;
-      border-radius: 50 percent;
+      border-radius: 50%;
       display: inline-block;
       margin-right: 10px;
       vertical-align: middle;
@@ -85,8 +90,13 @@
     .saving.green { color: #58d46d; }
     .saving.red { color: #ff4c4c; }
 
+    .placeholder {
+      opacity: 0.4;
+      font-size: 22px;
+    }
+
     .band-card.greyed {
-      opacity: .35;
+      opacity: 0.35;
       border: 2px dashed #666;
     }
 
@@ -119,17 +129,6 @@
 <div id="tomorrow-green-late"></div>
 
 <script>
-// Option A: force one-time reload if JSON has changed
-(function ensureFresh() {
-  const marker = localStorage.getItem("last-json-version");
-  const nowMarker = String(new Date().getDate()) + "-" + String(new Date().getHours());
-
-  if (marker !== nowMarker) {
-    localStorage.setItem("last-json-version", nowMarker);
-    window.location.reload(true);
-  }
-})();
-
 // live clock
 function updateClock() {
   document.getElementById("clock").textContent =
@@ -140,30 +139,6 @@ updateClock();
 
 const BASELINE = 25.65;
 
-// reusable card builder
-function buildCard(containerId, band, price, timeRange, forceGrey = false) {
-  const el = document.getElementById(containerId);
-  const isPending = price === null || price === undefined;
-  const greyClass = isPending || forceGrey ? "greyed" : "";
-
-  el.innerHTML = `
-    <div class="band-card ${band} ${greyClass}" id="${containerId}-card">
-      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
-      ${
-        isPending
-          ? `<div class="price">Price not yet published</div>`
-          : `<div class="price">${price.toFixed(2)}p per kWh</div>`
-      }
-      <div>${timeRange}</div>
-      ${
-        isPending
-          ? `<div class="saving">Awaiting publication</div>`
-          : savingText(price)
-      }
-    </div>
-  `;
-}
-
 function savingText(price) {
   const saving = ((BASELINE - price) / BASELINE) * 100;
   return saving >= 0
@@ -171,14 +146,38 @@ function savingText(price) {
     : `<span class="saving red">▲ ${Math.abs(saving).toFixed(0)} percent above baseline</span>`;
 }
 
+function buildCard(containerId, band, price, timeRange, greyedOut = false) {
+  const container = document.getElementById(containerId);
+
+  const isPending = (price === null || price === undefined);
+  const classes = `band-card ${band} ${(greyedOut || isPending) ? "greyed" : ""}`;
+
+  container.innerHTML = `
+    <div class="${classes}" id="${containerId}-card">
+      <div><span class="dot ${band}"></span> ${band.toUpperCase()}</div>
+      ${!isPending ? `<div class="price">${price.toFixed(2)}p per kWh</div>` 
+                   : `<div class="price">Price not yet published</div>`}
+      <div>${timeRange}</div>
+      ${!isPending ? savingText(price) 
+                   : `<div class="saving">Awaiting publication</div>`}
+    </div>
+  `;
+}
+
+function highlight(id) {
+  const card = document.getElementById(id + "-card");
+  if (card) card.classList.add("current");
+}
+
 function highlightWindows() {
   const now = new Date();
   const h = now.getHours();
   const m = now.getMinutes();
-  const nowM = h * 60 + m;
 
-  const within = (sh, sm, eh, em) =>
-    nowM >= sh * 60 + sm && nowM < eh * 60 + em;
+  const within = (sh, sm, eh, em) => {
+    const nowM = h * 60 + m;
+    return nowM >= sh * 60 + sm && nowM < eh * 60 + em;
+  };
 
   if (within(0, 1, 6, 0)) highlight("today-green-early");
   if (within(6, 0, 16, 0) || within(19, 0, 23, 0)) highlight("today-amber");
@@ -187,56 +186,50 @@ function highlightWindows() {
   if (within(0, 0, 6, 0)) highlight("tomorrow-green-early");
 }
 
-function highlight(id) {
-  const card = document.getElementById(id + "-card");
-  if (card) card.classList.add("current");
-}
+fetch("data.json?ts=" + Date.now())
+  .then(r => r.json())
+  .then(data => {
 
-// main loader
-function loadData() {
-  fetch("data.json?ts=" + Date.now())
-    .then(r => r.json())
-    .then(render)
-    .catch(err => console.error("Error loading data.json:", err));
-}
+    const todayGreenEarlyPrice = data.today.green.price;
+    const todayAmberPrice      = data.today.amber.price;
+    const todayRedPrice        = data.today.red.price;
 
-// render UI
-function render(data) {
-  const today = data.today;
-  const tomorrow = data.tomorrow;
+    const tomorrowGreenPrice   = data.tomorrow.green
+      ? data.tomorrow.green.price
+      : null;
+    const tomorrowAmberPrice   = data.tomorrow.amber
+      ? data.tomorrow.amber.price
+      : null;
+    const tomorrowRedPrice     = data.tomorrow.red
+      ? data.tomorrow.red.price
+      : null;
 
-  buildCard("today-green-early", "green",
-    today.green.price, "00:01 - 06:00");
+    buildCard("today-green-early", "green", todayGreenEarlyPrice,
+      "00:01 - 06:00");
 
-  buildCard("today-amber", "amber",
-    today.amber.price, "06:00 - 16:00 and 19:00 - 23:00");
+    buildCard("today-amber", "amber", todayAmberPrice,
+      "06:00 - 16:00 & 19:00 - 23:00");
 
-  buildCard("today-red", "red",
-    today.red.price, "16:00 - 19:00");
+    buildCard("today-red", "red", todayRedPrice,
+      "16:00 - 19:00");
 
-  buildCard("today-green-late", "green",
-    tomorrow.green ? tomorrow.green.price : null,
-    "23:00 - 00:00");
+    buildCard("today-green-late", "green", tomorrowGreenPrice,
+      "23:00 - 00:00");
 
-  buildCard("tomorrow-green-early", "green",
-    tomorrow.green ? tomorrow.green.price : null,
-    "00:01 - 06:00");
+    buildCard("tomorrow-green-early", "green", tomorrowGreenPrice,
+      "00:01 - 06:00");
 
-  buildCard("tomorrow-amber", "amber",
-    tomorrow.amber ? tomorrow.amber.price : null,
-    "06:00 - 16:00 and 19:00 - 23:00");
+    buildCard("tomorrow-amber", "amber", tomorrowAmberPrice,
+      "06:00 - 16:00 & 19:00 - 23:00");
 
-  buildCard("tomorrow-red", "red",
-    tomorrow.red ? tomorrow.red.price : null,
-    "16:00 - 19:00");
+    buildCard("tomorrow-red", "red", tomorrowRedPrice,
+      "16:00 - 19:00");
 
-  buildCard("tomorrow-green-late", "green",
-    null, "23:00 - 00:00", true);
+    buildCard("tomorrow-green-late", "green", null,
+      "23:00 - 00:00", true);
 
-  highlightWindows();
-}
-
-loadData();
+    highlightWindows();
+  });
 </script>
 
 <hr style="margin-top:60px; opacity:0.2;">
@@ -285,7 +278,7 @@ loadData();
 
 <script>
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY = "YOUR_KEY_HERE";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 async function loadThreshold() {
   const res = await fetch(
@@ -311,7 +304,7 @@ async function updateThreshold() {
     {
       method: "PATCH",
       headers: {
-        "Content-Type": "application/json",   // FIXED HERE
+        "Content-Type": "application/json",
         apikey: SUPABASE_KEY
       },
       body: JSON.stringify({ value: newVal })
@@ -322,7 +315,9 @@ async function updateThreshold() {
     document.getElementById("threshold-status").innerText = "Saved.";
     loadThreshold();
   } else {
-    document.getElementById("threshold-status").innerText = "Error saving value";
+    document.getElementById("threshold-status").innerText =
+      "Error saving value";
+    console.error(await res.text());
   }
 }
 
