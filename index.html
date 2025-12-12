@@ -136,12 +136,13 @@ function tomorrowPublished(t){
   return t && t.green && t.amber && t.red;
 }
 
-fetch("data.json?ts="+Date.now())
-.then(r=>r.json())
-.then(data=>{
-  const t=data.today;
-  const tom=data.tomorrow;
-  const tomLive=tomorrowPublished(tom);
+async function loadPrices() {
+  const r = await fetch("data.json?ts=" + Date.now());
+  const data = await r.json();
+
+  const t = data.today;
+  const tom = data.tomorrow;
+  const tomLive = tomorrowPublished(tom);
 
   buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
   buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
@@ -173,7 +174,11 @@ fetch("data.json?ts="+Date.now())
   buildCard("tomorrow-green-late","green",null,"23:00 - 00:00");
 
   highlightNow();
-});
+}
+
+loadPrices();                 // initial load
+setInterval(loadPrices, 300000); // refresh every 5 minutes
+
 </script>
 
 <hr style="margin-top:60px;opacity:.2">
