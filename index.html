@@ -132,37 +132,32 @@ function highlightNow(){
   if(inWin(23,0,24,0)) highlight("today-green-late");
 }
 
-// 🔑 THE FIX: prices are published if tomorrow.green.price exists
-function pricesPublished(tomorrow){
-  return tomorrow && tomorrow.green && tomorrow.green.price != null;
-}
-
 fetch("data.json?ts="+Date.now())
 .then(r=>r.json())
 .then(data=>{
   const t=data.today;
   const tom=data.tomorrow;
-  const published=pricesPublished(tom);
 
   buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
   buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
   buildCard("today-red","red",t.red.price,"16:00 - 19:00");
 
+  // 23:00 today is tomorrow.green
   buildCard("today-green-late","green",
-    published ? tom.green.price : null,
+    tom.green?.price ?? null,
     "23:00 - 00:00"
   );
 
   buildCard("tomorrow-green-early","green",
-    published ? tom.green.price : null,
+    tom.green?.price ?? null,
     "00:01 - 06:00"
   );
   buildCard("tomorrow-amber","amber",
-    published ? tom.amber.price : null,
+    tom.amber?.price ?? null,
     "06:00 - 16:00 & 19:00 - 23:00"
   );
   buildCard("tomorrow-red","red",
-    published ? tom.red.price : null,
+    tom.red?.price ?? null,
     "16:00 - 19:00"
   );
 
@@ -190,7 +185,7 @@ style="padding:14px 28px;font-size:22px;border-radius:12px">Save</button>
 
 <script>
 const SUPABASE_URL="https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+const SUPABASE_KEY="YOUR_PUBLIC_ANON_KEY_HERE";
 
 async function loadThreshold(){
   const res=await fetch(
