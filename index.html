@@ -49,7 +49,6 @@ h2 { font-size:28px; margin:30px 0 10px; }
   font-size:18px;
   margin-top:5px;
   display:inline-block;
-  background:none;
 }
 .saving.green { color:#58d46d; }
 .saving.red { color:#ff4c4c; }
@@ -94,7 +93,8 @@ function updateClock(){
   document.getElementById("clock").textContent =
     new Date().toLocaleString("en-GB");
 }
-setInterval(updateClock,1000); updateClock();
+setInterval(updateClock,1000);
+updateClock();
 
 function savingText(price){
   const pct=((BASELINE-price)/BASELINE)*100;
@@ -132,53 +132,44 @@ function highlightNow(){
   if(inWin(23,0,24,0)) highlight("today-green-late");
 }
 
-function tomorrowPublished(t){
-  return t && t.green && t.amber && t.red;
+// 🔑 THE FIX: prices are published if tomorrow.green.price exists
+function pricesPublished(tomorrow){
+  return tomorrow && tomorrow.green && tomorrow.green.price != null;
 }
 
-async function loadPrices() {
-  const r = await fetch("data.json?ts=" + Date.now());
-  const data = await r.json();
-
-  const t = data.today;
-  const tom = data.tomorrow;
-  const tomLive = tomorrowPublished(tom);
+fetch("data.json?ts="+Date.now())
+.then(r=>r.json())
+.then(data=>{
+  const t=data.today;
+  const tom=data.tomorrow;
+  const published=pricesPublished(tom);
 
   buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
   buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
   buildCard("today-red","red",t.red.price,"16:00 - 19:00");
 
-  buildCard(
-    "today-green-late",
-    "green",
-    tomLive ? tom.green.price : null,
+  buildCard("today-green-late","green",
+    published ? tom.green.price : null,
     "23:00 - 00:00"
   );
 
-  buildCard(
-    "tomorrow-green-early","green",
-    tomLive ? tom.green.price : null,
+  buildCard("tomorrow-green-early","green",
+    published ? tom.green.price : null,
     "00:01 - 06:00"
   );
-  buildCard(
-    "tomorrow-amber","amber",
-    tomLive ? tom.amber.price : null,
+  buildCard("tomorrow-amber","amber",
+    published ? tom.amber.price : null,
     "06:00 - 16:00 & 19:00 - 23:00"
   );
-  buildCard(
-    "tomorrow-red","red",
-    tomLive ? tom.red.price : null,
+  buildCard("tomorrow-red","red",
+    published ? tom.red.price : null,
     "16:00 - 19:00"
   );
 
   buildCard("tomorrow-green-late","green",null,"23:00 - 00:00");
 
   highlightNow();
-}
-
-loadPrices();                 // initial load
-setInterval(loadPrices, 300000); // refresh every 5 minutes
-
+});
 </script>
 
 <hr style="margin-top:60px;opacity:.2">
@@ -199,50 +190,44 @@ style="padding:14px 28px;font-size:22px;border-radius:12px">Save</button>
 
 <script>
 const SUPABASE_URL="https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+const SUPABASE_KEY="YOUR_PUBLIC_ANON_KEY";
 
-async function loadThreshold() {
-  const res = await fetch(
+async function loadThreshold(){
+  const res=await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
-    {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`
-      }
-    }
+    { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
   );
-
-  const data = await res.json();
+  const data=await res.json();
   document.getElementById("current-threshold").innerText =
     data.length ? data[0].value : "Not set";
 }
 
-async function updateThreshold() {
-  const newVal = document.getElementById("new-threshold").value;
-  if (!newVal) return;
+async function updateThreshold(){
+  const v=document.getElementById("new-threshold").value;
+  if(!v) return;
 
-  const res = await fetch(
+  const res=await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
     {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Prefer: "return=representation"
+      method:"PATCH",
+      headers:{
+        "Content-Type":"application/json",
+        apikey:SUPABASE_KEY,
+        Authorization:`Bearer ${SUPABASE_KEY}`,
+        Prefer:"return=representation"
       },
-      body: JSON.stringify({ value: newVal })
+      body:JSON.stringify({value:v})
     }
   );
 
-  if (!res.ok) {
-    document.getElementById("threshold-status").innerText = "Error saving value";
+  if(!res.ok){
+    document.getElementById("threshold-status").innerText="Error saving value";
     return;
   }
 
-  const updated = await res.json();
-  document.getElementById("current-threshold").innerText = updated[0].value;
-  document.getElementById("threshold-status").innerText = "Saved";
+  const d=await res.json();
+  document.getElementById("current-threshold").innerText=d[0].value;
+  document.getElementById("threshold-status").innerText="Saved";
 }
 
 loadThreshold();
