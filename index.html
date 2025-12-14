@@ -24,12 +24,10 @@ h2 { font-size:28px; margin:30px 0 10px; }
   border-radius:18px;
   font-size:26px;
   box-shadow:0 0 25px rgba(0,0,0,.4);
-  transition:.3s;
 }
 .band-card.current {
   transform:scale(1.04);
   border:2px solid #fff;
-  box-shadow:0 0 35px rgba(255,255,255,.25);
 }
 
 .green { background:#1f8f2e; }
@@ -45,24 +43,11 @@ h2 { font-size:28px; margin:30px 0 10px; }
 .dot.red   { background:#ff4c4c; }
 
 .price { font-size:34px; font-weight:bold; margin:8px 0; }
-.saving {
-  font-size:18px;
-  margin-top:5px;
-  display:inline-block;
-}
-.saving.green { color:#58d46d; }
-.saving.red { color:#ff4c4c; }
+.saving { font-size:18px; margin-top:5px; }
 
 .greyed {
   opacity:.35;
   border:2px dashed #666;
-}
-
-footer {
-  margin-top:50px;
-  padding:20px;
-  font-size:16px;
-  color:#666;
 }
 </style>
 </head>
@@ -71,7 +56,7 @@ footer {
 
 <header>
 <h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-<div class="clock" id="clock">Loading time…</div>
+<div class="clock" id="clock"></div>
 </header>
 
 <h2>Today</h2>
@@ -93,14 +78,13 @@ function updateClock(){
   document.getElementById("clock").textContent =
     new Date().toLocaleString("en-GB");
 }
-setInterval(updateClock,1000);
-updateClock();
+setInterval(updateClock,1000); updateClock();
 
 function savingText(price){
   const pct=((BASELINE-price)/BASELINE)*100;
   return pct>=0
-    ? `<div class="saving green">▼ ${pct.toFixed(0)} percent below baseline</div>`
-    : `<div class="saving red">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
+    ? `<div class="saving">▼ ${pct.toFixed(0)} percent below baseline</div>`
+    : `<div class="saving">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
 }
 
 function buildCard(id, band, price, time){
@@ -109,68 +93,42 @@ function buildCard(id, band, price, time){
   el.innerHTML=`
   <div class="band-card ${band} ${pending?"greyed":""}" id="${id}-card">
     <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
-    ${pending
-      ? `<div class="price">Price not yet published</div>`
-      : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
+    ${pending ? `<div class="price">Price not yet published</div>`
+              : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
     <div>${time}</div>
     ${pending ? `<div class="saving">Awaiting publication</div>` : savingText(price)}
   </div>`;
 }
 
-function highlight(id){
-  const el=document.getElementById(id+"-card");
-  if(el) el.classList.add("current");
-}
-
-function highlightNow(){
-  const d=new Date(), m=d.getHours()*60+d.getMinutes();
-  const inWin=(a,b,c,d)=>m>=a*60+b && m<c*60+d;
-
-  if(inWin(0,1,6,0)) highlight("today-green-early");
-  if(inWin(6,0,16,0)||inWin(19,0,23,0)) highlight("today-amber");
-  if(inWin(16,0,19,0)) highlight("today-red");
-  if(inWin(23,0,24,0)) highlight("today-green-late");
-}
-
 fetch("data.json?ts="+Date.now())
 .then(r=>r.json())
 .then(data=>{
+  const now=new Date();
+  const hour=now.getHours();
+
   const t=data.today;
   const tom=data.tomorrow;
+
+  const overnightPrice =
+    hour < 6
+      ? t.green?.price
+      : tom.green?.price;
 
   buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
   buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
   buildCard("today-red","red",t.red.price,"16:00 - 19:00");
+  buildCard("today-green-late","green",overnightPrice,"23:00 - 00:00");
 
-  // 23:00 today is tomorrow.green
-  buildCard("today-green-late","green",
-    tom.green?.price ?? null,
-    "23:00 - 00:00"
-  );
-
-  buildCard("tomorrow-green-early","green",
-    tom.green?.price ?? null,
-    "00:01 - 06:00"
-  );
-  buildCard("tomorrow-amber","amber",
-    tom.amber?.price ?? null,
-    "06:00 - 16:00 & 19:00 - 23:00"
-  );
-  buildCard("tomorrow-red","red",
-    tom.red?.price ?? null,
-    "16:00 - 19:00"
-  );
-
+  buildCard("tomorrow-green-early","green",overnightPrice,"00:01 - 06:00");
+  buildCard("tomorrow-amber","amber",tom.amber?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("tomorrow-red","red",tom.red?.price ?? null,"16:00 - 19:00");
   buildCard("tomorrow-green-late","green",null,"23:00 - 00:00");
-
-  highlightNow();
 });
 </script>
 
 <hr style="margin-top:60px;opacity:.2">
 
 <h2>Set Charging Price Threshold</h2>
-<p>Current threshold:</p>
 <h2 id="current-threshold">Loading…</h2>
 
 <input id="new-threshold" type="number"
@@ -181,7 +139,7 @@ border-radius:12px;border:2px solid #444;background:#222;color:#fff">
 <button onclick="updateThreshold()"
 style="padding:14px 28px;font-size:22px;border-radius:12px">Save</button>
 
-<div id="threshold-status" style="margin-top:20px"></div>
+<div id="threshold-status"></div>
 
 <script>
 const SUPABASE_URL="https://pczxhzjdzcmojstavzym.supabase.co";
@@ -227,10 +185,6 @@ async function updateThreshold(){
 
 loadThreshold();
 </script>
-
-<footer>
-EDF FreePhase Display by Matt Lewis • Auto-updated hourly via GitHub Actions
-</footer>
 
 </body>
 </html>
