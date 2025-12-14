@@ -12,6 +12,7 @@ body {
   text-align:center;
   margin:0;
 }
+
 header { padding:30px 0 10px; }
 h1 { font-size:42px; font-weight:600; margin-bottom:5px; }
 .clock { font-size:18px; color:#bbb; margin-bottom:25px; }
@@ -26,6 +27,7 @@ h2 { font-size:28px; margin:30px 0 10px; }
   box-shadow:0 0 25px rgba(0,0,0,.4);
   transition:.3s;
 }
+
 .band-card.current {
   transform:scale(1.04);
   border:2px solid #fff;
@@ -37,24 +39,35 @@ h2 { font-size:28px; margin:30px 0 10px; }
 .red   { background:#b00000; }
 
 .dot {
-  height:18px; width:18px;
-  border-radius:50%;
-  display:inline-block;
-  margin-right:10px;
+  height:18px; width:18px; border-radius:50%;
+  display:inline-block; margin-right:10px;
 }
+
 .dot.green { background:#58d46d; }
 .dot.amber { background:#ffd84a; }
 .dot.red   { background:#ff4c4c; }
 
 .price { font-size:34px; font-weight:bold; margin:8px 0; }
 
-.saving { font-size:18px; margin-top:5px; }
+.saving {
+  font-size:18px;
+  margin-top:6px;
+  display:inline-block;
+}
+
 .saving.green { color:#58d46d; }
 .saving.red { color:#ff4c4c; }
 
 .greyed {
   opacity:.35;
   border:2px dashed #666;
+}
+
+footer {
+  margin-top:50px;
+  padding:20px;
+  font-size:16px;
+  color:#666;
 }
 </style>
 </head>
@@ -81,7 +94,7 @@ h2 { font-size:28px; margin:30px 0 10px; }
 const BASELINE = 25.65;
 
 function updateClock(){
-  document.getElementById("clock").innerText =
+  document.getElementById("clock").textContent =
     new Date().toLocaleString("en-GB");
 }
 setInterval(updateClock,1000);
@@ -90,15 +103,15 @@ updateClock();
 function savingText(price){
   const pct=((BASELINE-price)/BASELINE)*100;
   return pct>=0
-    ? `<div class="saving green">▼ ${pct.toFixed(0)} percent below baseline</div>`
-    : `<div class="saving red">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
+    ? `<span class="saving green">▼ ${pct.toFixed(0)} percent below baseline</span>`
+    : `<span class="saving red">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</span>`;
 }
 
 function buildCard(id, band, price, time){
   const el=document.getElementById(id);
   const pending=price==null;
 
-  el.innerHTML = `
+  el.innerHTML=`
   <div class="band-card ${band} ${pending?"greyed":""}" id="${id}-card">
     <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
     ${pending
@@ -109,22 +122,18 @@ function buildCard(id, band, price, time){
   </div>`;
 }
 
-function clearHighlights(){
-  document.querySelectorAll(".band-card").forEach(e=>{
-    e.classList.remove("current");
-  });
+function highlightNow(){
+  const d=new Date();
+  const m=d.getHours()*60+d.getMinutes();
+
+  if(m>=1 && m<360) highlight("today-green-early");
+  else if((m>=360 && m<960) || (m>=1140 && m<1380)) highlight("today-amber");
+  else if(m>=960 && m<1140) highlight("today-red");
 }
 
-function highlightNow(){
-  clearHighlights();
-
-  const now=new Date();
-  const m=now.getHours()*60+now.getMinutes();
-
-  if(m>=1 && m<360) document.getElementById("today-green-early-card")?.classList.add("current");
-  else if(m>=360 && m<960) document.getElementById("today-amber-card")?.classList.add("current");
-  else if(m>=960 && m<1140) document.getElementById("today-red-card")?.classList.add("current");
-  else document.getElementById("today-green-late-card")?.classList.add("current");
+function highlight(id){
+  const el=document.getElementById(id+"-card");
+  if(el) el.classList.add("current");
 }
 
 fetch("data.json?ts="+Date.now())
@@ -133,6 +142,11 @@ fetch("data.json?ts="+Date.now())
   const t=data.today;
   const tom=data.tomorrow;
 
+  const tomorrowPublished =
+    tom.green && tom.green.price != null &&
+    tom.amber && tom.amber.price != null &&
+    tom.red && tom.red.price != null;
+
   buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
   buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
   buildCard("today-red","red",t.red.price,"16:00 - 19:00");
@@ -140,23 +154,99 @@ fetch("data.json?ts="+Date.now())
   buildCard(
     "today-green-late",
     "green",
-    tom.green ? tom.green.price : null,
+    tomorrowPublished ? tom.green.price : null,
     "23:00 - 00:00"
   );
 
   buildCard(
     "tomorrow-green-early",
     "green",
-    tom.green ? tom.green.price : null,
+    tomorrowPublished ? tom.green.price : null,
     "00:01 - 06:00"
   );
-  buildCard("tomorrow-amber","amber",tom.amber?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("tomorrow-red","red",tom.red?.price ?? null,"16:00 - 19:00");
+
+  buildCard(
+    "tomorrow-amber",
+    "amber",
+    tomorrowPublished ? tom.amber.price : null,
+    "06:00 - 16:00 & 19:00 - 23:00"
+  );
+
+  buildCard(
+    "tomorrow-red",
+    "red",
+    tomorrowPublished ? tom.red.price : null,
+    "16:00 - 19:00"
+  );
 
   highlightNow();
-  setInterval(highlightNow,60000);
 });
 </script>
+
+<hr style="margin-top:60px;opacity:.2">
+
+<h2>Set Charging Price Threshold</h2>
+<p>Current threshold:</p>
+<h2 id="current-threshold">Loading…</h2>
+
+<input id="new-threshold" type="number"
+style="font-size:26px;padding:14px;width:260px;text-align:center;
+border-radius:12px;border:2px solid #444;background:#222;color:#fff">
+
+<br><br>
+<button onclick="updateThreshold()"
+style="padding:14px 28px;font-size:22px;border-radius:12px">Save</button>
+
+<div id="threshold-status" style="margin-top:20px"></div>
+
+<script>
+const SUPABASE_URL="https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+
+async function loadThreshold(){
+  const res=await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
+    { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
+  );
+  const data=await res.json();
+  document.getElementById("current-threshold").innerText =
+    data.length ? data[0].value : "Not set";
+}
+
+async function updateThreshold(){
+  const v=document.getElementById("new-threshold").value;
+  if(!v) return;
+
+  const res=await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
+    {
+      method:"PATCH",
+      headers:{
+        "Content-Type":"application/json",
+        apikey:SUPABASE_KEY,
+        Authorization:`Bearer ${SUPABASE_KEY}`,
+        Prefer:"return=representation"
+      },
+      body:JSON.stringify({value:v})
+    }
+  );
+
+  if(!res.ok){
+    document.getElementById("threshold-status").innerText="Error saving value";
+    return;
+  }
+
+  const d=await res.json();
+  document.getElementById("current-threshold").innerText=d[0].value;
+  document.getElementById("threshold-status").innerText="Saved";
+}
+
+loadThreshold();
+</script>
+
+<footer>
+EDF FreePhase Display by Matt Lewis • Auto-updated hourly via GitHub Actions
+</footer>
 
 </body>
 </html>
