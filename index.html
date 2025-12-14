@@ -39,20 +39,31 @@ h2 { font-size:28px; margin:30px 0 10px; }
 .red   { background:#b00000; }
 
 .dot {
-  height:18px; width:18px; border-radius:50%;
-  display:inline-block; margin-right:10px;
+  height:18px;
+  width:18px;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:10px;
 }
 
 .dot.green { background:#58d46d; }
 .dot.amber { background:#ffd84a; }
 .dot.red   { background:#ff4c4c; }
 
-.price { font-size:34px; font-weight:bold; margin:8px 0; }
+.price {
+  font-size:34px;
+  font-weight:bold;
+  margin:8px 0;
+}
 
+/* SAFARI FIX */
 .saving {
   font-size:18px;
   margin-top:6px;
-  display:inline-block;
+  display:block;
+  background:transparent !important;
+  box-shadow:none !important;
+  padding:0 !important;
 }
 
 .saving.green { color:#58d46d; }
@@ -103,8 +114,8 @@ updateClock();
 function savingText(price){
   const pct=((BASELINE-price)/BASELINE)*100;
   return pct>=0
-    ? `<span class="saving green">▼ ${pct.toFixed(0)} percent below baseline</span>`
-    : `<span class="saving red">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</span>`;
+    ? `<div class="saving green">▼ ${pct.toFixed(0)} percent below baseline</div>`
+    : `<div class="saving red">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
 }
 
 function buildCard(id, band, price, time){
@@ -122,18 +133,19 @@ function buildCard(id, band, price, time){
   </div>`;
 }
 
+function highlight(id){
+  const el=document.getElementById(id+"-card");
+  if(el) el.classList.add("current");
+}
+
 function highlightNow(){
   const d=new Date();
   const m=d.getHours()*60+d.getMinutes();
 
   if(m>=1 && m<360) highlight("today-green-early");
-  else if((m>=360 && m<960) || (m>=1140 && m<1380)) highlight("today-amber");
-  else if(m>=960 && m<1140) highlight("today-red");
-}
-
-function highlight(id){
-  const el=document.getElementById(id+"-card");
-  if(el) el.classList.add("current");
+  if((m>=360 && m<960) || (m>=1140 && m<1380)) highlight("today-amber");
+  if(m>=960 && m<1140) highlight("today-red");
+  if(m>=1380) highlight("today-green-late");
 }
 
 fetch("data.json?ts="+Date.now())
@@ -142,40 +154,27 @@ fetch("data.json?ts="+Date.now())
   const t=data.today;
   const tom=data.tomorrow;
 
-  const tomorrowPublished =
-    tom.green && tom.green.price != null &&
-    tom.amber && tom.amber.price != null &&
-    tom.red && tom.red.price != null;
-
   buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
   buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
   buildCard("today-red","red",t.red.price,"16:00 - 19:00");
 
-  buildCard(
-    "today-green-late",
-    "green",
-    tomorrowPublished ? tom.green.price : null,
+  buildCard("today-green-late","green",
+    tom.green && tom.green.start.includes("23:00") ? tom.green.price : null,
     "23:00 - 00:00"
   );
 
-  buildCard(
-    "tomorrow-green-early",
-    "green",
-    tomorrowPublished ? tom.green.price : null,
+  buildCard("tomorrow-green-early","green",
+    tom.green && tom.green.start.includes("23:00") ? tom.green.price : null,
     "00:01 - 06:00"
   );
 
-  buildCard(
-    "tomorrow-amber",
-    "amber",
-    tomorrowPublished ? tom.amber.price : null,
+  buildCard("tomorrow-amber","amber",
+    tom.amber ? tom.amber.price : null,
     "06:00 - 16:00 & 19:00 - 23:00"
   );
 
-  buildCard(
-    "tomorrow-red",
-    "red",
-    tomorrowPublished ? tom.red.price : null,
+  buildCard("tomorrow-red","red",
+    tom.red ? tom.red.price : null,
     "16:00 - 19:00"
   );
 
@@ -245,7 +244,7 @@ loadThreshold();
 </script>
 
 <footer>
-EDF FreePhase Display by Matt Lewis • Auto-updated hourly via GitHub Actions
+EDF FreePhase Display by Matt Lewis • Auto updated hourly via GitHub Actions
 </footer>
 
 </body>
