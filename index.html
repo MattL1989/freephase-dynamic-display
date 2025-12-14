@@ -13,21 +13,23 @@ body {
   margin:0;
 }
 header { padding:30px 0 10px; }
-h1 { font-size:42px; font-weight:600; margin-bottom:5px; }
-.clock { font-size:18px; color:#bbb; margin-bottom:25px; }
-h2 { font-size:28px; margin:30px 0 10px; }
+h1 { font-size:40px; font-weight:600; margin-bottom:5px; }
+.clock { font-size:16px; color:#bbb; margin-bottom:25px; }
+h2 { font-size:26px; margin:30px 0 10px; }
 
 .band-card {
   width:90%;
   margin:15px auto;
-  padding:25px;
+  padding:24px;
   border-radius:18px;
-  font-size:26px;
+  font-size:24px;
   box-shadow:0 0 25px rgba(0,0,0,.4);
+  transition:.25s;
 }
 .band-card.current {
   transform:scale(1.04);
   border:2px solid #fff;
+  box-shadow:0 0 35px rgba(255,255,255,.25);
 }
 
 .green { background:#1f8f2e; }
@@ -35,15 +37,18 @@ h2 { font-size:28px; margin:30px 0 10px; }
 .red   { background:#b00000; }
 
 .dot {
-  height:18px; width:18px; border-radius:50%;
-  display:inline-block; margin-right:10px;
+  height:16px;
+  width:16px;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:8px;
 }
 .dot.green { background:#58d46d; }
 .dot.amber { background:#ffd84a; }
 .dot.red   { background:#ff4c4c; }
 
-.price { font-size:34px; font-weight:bold; margin:8px 0; }
-.saving { font-size:18px; margin-top:5px; }
+.price { font-size:32px; font-weight:bold; margin:6px 0; }
+.saving { font-size:16px; margin-top:4px; }
 
 .greyed {
   opacity:.35;
@@ -53,7 +58,7 @@ h2 { font-size:28px; margin:30px 0 10px; }
 footer {
   margin-top:50px;
   padding:20px;
-  font-size:16px;
+  font-size:14px;
   color:#666;
 }
 </style>
@@ -90,41 +95,59 @@ updateClock();
 function savingText(price){
   const pct=((BASELINE-price)/BASELINE)*100;
   return pct>=0
-    ? `<div class="saving">▼ ${pct.toFixed(0)} percent below baseline</div>`
-    : `<div class="saving">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
+    ? `▼ ${pct.toFixed(0)} percent below baseline`
+    : `▲ ${Math.abs(pct).toFixed(0)} percent above baseline`;
 }
 
 function buildCard(id, band, price, time){
   const el=document.getElementById(id);
   const pending=price==null;
   el.innerHTML=`
-  <div class="band-card ${band} ${pending?"greyed":""}">
-    <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
-    ${pending
-      ? `<div class="price">Price not yet published</div>`
-      : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
-    <div>${time}</div>
-    ${pending ? `<div class="saving">Awaiting publication</div>` : savingText(price)}
-  </div>`;
+    <div class="band-card ${band} ${pending?"greyed":""}" id="${id}-card">
+      <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
+      ${pending
+        ? `<div class="price">Price not yet published</div>`
+        : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
+      <div>${time}</div>
+      <div class="saving">${pending?"Awaiting publication":savingText(price)}</div>
+    </div>
+  `;
+}
+
+function highlightNow(){
+  const d=new Date();
+  const mins=d.getHours()*60+d.getMinutes();
+
+  const inRange=(s,e)=>mins>=s && mins<e;
+
+  if(inRange(1,360)) add("today-green-early");
+  if(inRange(360,960)) add("today-amber");
+  if(inRange(960,1140)) add("today-red");
+  if(inRange(1140,1380)) add("today-amber");
+  if(inRange(1380,1440)) add("today-green-late");
+}
+
+function add(id){
+  const el=document.getElementById(id+"-card");
+  if(el) el.classList.add("current");
 }
 
 fetch("data.json?ts="+Date.now())
 .then(r=>r.json())
 .then(data=>{
-  const today=data.today;
-  const tomorrow=data.tomorrow;
+  const t=data.today;
+  const tom=data.tomorrow;
 
-  const overnightGreen = tomorrow.green ? tomorrow.green.price : null;
+  buildCard("today-green-early","green",t.green?.price,"00:01 - 06:00");
+  buildCard("today-amber","amber",t.amber?.price,"06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("today-red","red",t.red?.price,"16:00 - 19:00");
+  buildCard("today-green-late","green",t.green?.price,"23:00 - 00:00");
 
-  buildCard("today-green-early","green",today.green.price,"00:01 - 06:00");
-  buildCard("today-amber","amber",today.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("today-red","red",today.red.price,"16:00 - 19:00");
+  buildCard("tomorrow-green-early","green",tom.green?.price,"00:01 - 06:00");
+  buildCard("tomorrow-amber","amber",tom.amber?.price,"06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("tomorrow-red","red",tom.red?.price,"16:00 - 19:00");
 
-  buildCard("today-green-late","green",overnightGreen,"23:00 - 00:00");
-
-  buildCard("tomorrow-green-early","green",overnightGreen,"00:01 - 06:00");
-  buildCard("tomorrow-amber","amber",tomorrow.amber?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("tomorrow-red","red",tomorrow.red?.price ?? null,"16:00 - 19:00");
+  highlightNow();
 });
 </script>
 
@@ -135,34 +158,34 @@ fetch("data.json?ts="+Date.now())
 <h2 id="current-threshold">Loading…</h2>
 
 <input id="new-threshold" type="number"
-style="font-size:26px;padding:14px;width:260px;text-align:center;
+style="font-size:24px;padding:12px;width:240px;text-align:center;
 border-radius:12px;border:2px solid #444;background:#222;color:#fff">
 
 <br><br>
 <button onclick="updateThreshold()"
-style="padding:14px 28px;font-size:22px;border-radius:12px">Save</button>
+style="padding:12px 26px;font-size:20px;border-radius:12px">Save</button>
 
-<div id="threshold-status" style="margin-top:20px"></div>
+<div id="threshold-status" style="margin-top:18px"></div>
 
 <script>
 const SUPABASE_URL="https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 async function loadThreshold(){
-  const res=await fetch(
+  const r=await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
     { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
   );
-  const data=await res.json();
+  const d=await r.json();
   document.getElementById("current-threshold").innerText =
-    data.length ? data[0].value : "Not set";
+    d.length ? d[0].value : "Not set";
 }
 
 async function updateThreshold(){
   const v=document.getElementById("new-threshold").value;
   if(!v) return;
 
-  const res=await fetch(
+  const r=await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
     {
       method:"PATCH",
@@ -176,12 +199,12 @@ async function updateThreshold(){
     }
   );
 
-  if(!res.ok){
+  if(!r.ok){
     document.getElementById("threshold-status").innerText="Error saving value";
     return;
   }
 
-  const d=await res.json();
+  const d=await r.json();
   document.getElementById("current-threshold").innerText=d[0].value;
   document.getElementById("threshold-status").innerText="Saved";
 }
