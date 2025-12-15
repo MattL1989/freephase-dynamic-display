@@ -298,7 +298,8 @@ async function loadThreshold(){
   const data = await res.json();
   const value = (Array.isArray(data) && data.length) ? data[0].value : null;
   document.getElementById("current-threshold").innerText = value != null ? value : "Not set";
-  document.getElementById("new-threshold").value = value != null ? value : "";
+  document.getElementById("new-threshold").value = "";
+
 }
 
 async function updateThreshold(){
