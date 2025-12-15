@@ -34,7 +34,7 @@ h2 { margin:36px 0 14px; }
 
 .green { background:#1f8f2e; }
 .amber { background:#c9a200; }
-.red   { background:#b00000; }
+.red { background:#b00000; }
 
 .greyed {
   opacity:0.35;
@@ -120,12 +120,19 @@ function pctText(price) {
   return `${dir} ${Math.abs(p).toFixed(0)} percent ${p >= 0 ? "below" : "above"} baseline`;
 }
 
+function isCurrentBand(startIso, endIso) {
+  if (!startIso || !endIso) return false;
+  const now = new Date();
+  return now >= new Date(startIso) && now < new Date(endIso);
+}
+
 function buildCard(id, band, price, time, startIso, endIso) {
   const el = document.getElementById(id);
   const pending = price == null;
+  const current = isCurrentBand(startIso, endIso);
 
   el.innerHTML = `
-    <div class="band-card ${band} ${pending ? "greyed" : ""}" id="${id}-card">
+    <div class="band-card ${band} ${pending ? "greyed" : ""} ${current ? "current" : ""}">
       <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
       ${pending
         ? `<div class="price">Price not yet published</div>`
@@ -136,30 +143,16 @@ function buildCard(id, band, price, time, startIso, endIso) {
   `;
 }
 
-function isCurrentBand(startIso, endIso) {
-  if (!startIso || !endIso) return false
-
-  const now = new Date()
-  const start = new Date(startIso)
-  const end = new Date(endIso)
-
-  return now >= start && now < end
-}
-
-function mark(id) {
-  const el = document.getElementById(id + "-card");
-  if (el) el.classList.add("current");
-}
-
 function dayKey(d) {
   return d.toISOString().slice(0,10);
 }
 
 fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(), {
-  cache: "no-store"
+  cache:"no-store"
 })
 .then(r => r.json())
 .then(data => {
+
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
@@ -167,44 +160,33 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
   const todayKey = dayKey(today);
   const tomorrowKey = dayKey(tomorrow);
 
-  function greenMorningFor(dayKeyValue) {
+  function pick(band, key, hourCheck) {
     return Object.values(data).flatMap(d =>
-      d.green && new Date(d.green.end).toISOString().slice(0,10) === dayKeyValue
-        ? [d.green]
-        : []
-    )[0] || null;
-  }
-
-  function bandByStart(band, dayKeyValue) {
-    return Object.values(data).flatMap(d =>
-      d[band] && new Date(d[band].start).toISOString().slice(0,10) === dayKeyValue
+      d[band] &&
+      new Date(d[band].start).toISOString().slice(0,10) === key &&
+      (hourCheck == null || new Date(d[band].start).getUTCHours() === hourCheck)
         ? [d[band]]
         : []
     )[0] || null;
   }
 
-  const tg = greenMorningFor(todayKey);
-  const ta = bandByStart("amber", todayKey);
-  const tr = bandByStart("red", todayKey);
+  const tg = pick("green", todayKey, 0);
+  const ta = pick("amber", todayKey);
+  const tr = pick("red", todayKey);
+  const tlg = pick("green", todayKey, 23);
 
-  const tlg = bandByStart("green", todayKey) &&
-              new Date(bandByStart("green", todayKey).start).getUTCHours() === 23
-              ? bandByStart("green", todayKey)
-              : null;
+  const mg = pick("green", tomorrowKey, 0);
+  const ma = pick("amber", tomorrowKey);
+  const mr = pick("red", tomorrowKey);
 
-  const mg = greenMorningFor(tomorrowKey);
-  const ma = bandByStart("amber", tomorrowKey);
-  const mr = bandByStart("red", tomorrowKey);
+  buildCard("today-green-morning","green",tg?.price ?? null,"00:01 - 06:00",tg?.start,tg?.end);
+  buildCard("today-amber","amber",ta?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00",ta?.start,ta?.end);
+  buildCard("today-red","red",tr?.price ?? null,"16:00 - 19:00",tr?.start,tr?.end);
+  buildCard("today-green-late","green",tlg?.price ?? null,"23:00 - 00:00",tlg?.start,tlg?.end);
 
-  buildCard("today-green-morning", "green", tg?.price ?? null, "00:01 - 06:00");
-  buildCard("today-amber", "amber", ta?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("today-red", "red", tr?.price ?? null, "16:00 - 19:00");
-  buildCard("today-green-late", "green", tlg?.price ?? null, "23:00 - 00:00");
-
-  buildCard("tomorrow-green-morning", "green", mg?.price ?? null, "00:01 - 06:00");
-  buildCard("tomorrow-amber", "amber", ma?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("tomorrow-red", "red", mr?.price ?? null, "16:00 - 19:00");
-
+  buildCard("tomorrow-green-morning","green",mg?.price ?? null,"00:01 - 06:00",mg?.start,mg?.end);
+  buildCard("tomorrow-amber","amber",ma?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00",ma?.start,ma?.end);
+  buildCard("tomorrow-red","red",mr?.price ?? null,"16:00 - 19:00",mr?.start,mr?.end);
 });
 
 async function loadThreshold() {
