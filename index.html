@@ -136,14 +136,14 @@ function buildCard(id, band, price, time) {
   `;
 }
 
-function highlightCurrent() {
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
+function isCurrentBand(startIso, endIso) {
+  if (!startIso || !endIso) return false
 
-  if (mins >= 1 && mins < 360) mark("today-green-morning");
-  else if (mins >= 360 && mins < 960) mark("today-amber");
-  else if (mins >= 960 && mins < 1140) mark("today-red");
-  else mark("today-green-late");
+  const now = new Date()
+  const start = new Date(startIso)
+  const end = new Date(endIso)
+
+  return now >= start && now < end
 }
 
 function mark(id) {
