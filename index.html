@@ -155,7 +155,9 @@ function dayKey(d) {
   return d.toISOString().slice(0,10);
 }
 
-fetch(`data.json?ts=${Date.now()}`, { cache: "no-store" })
+fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(), {
+  cache: "no-store"
+})
 .then(r => r.json())
 .then(data => {
   const today = new Date();
