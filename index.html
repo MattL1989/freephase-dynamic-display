@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>EDF FreePhase Dynamic</title>
 
 <style>
@@ -12,7 +13,6 @@ body {
   text-align:center;
   margin:0;
 }
-
 header { padding:30px 0 10px; }
 h1 { font-size:42px; font-weight:600; margin-bottom:5px; }
 .clock { font-size:18px; color:#bbb; margin-bottom:25px; }
@@ -27,7 +27,6 @@ h2 { font-size:28px; margin:30px 0 10px; }
   box-shadow:0 0 25px rgba(0,0,0,.4);
   transition:.3s;
 }
-
 .band-card.current {
   transform:scale(1.04);
   border:2px solid #fff;
@@ -39,35 +38,24 @@ h2 { font-size:28px; margin:30px 0 10px; }
 .red   { background:#b00000; }
 
 .dot {
-  height:18px;
-  width:18px;
-  border-radius:50%;
-  display:inline-block;
-  margin-right:10px;
+  height:18px; width:18px; border-radius:50%;
+  display:inline-block; margin-right:10px;
 }
-
 .dot.green { background:#58d46d; }
 .dot.amber { background:#ffd84a; }
 .dot.red   { background:#ff4c4c; }
 
-.price {
-  font-size:34px;
-  font-weight:bold;
-  margin:8px 0;
-}
+.price { font-size:34px; font-weight:bold; margin:8px 0; }
 
-/* SAFARI FIX */
 .saving {
   font-size:18px;
-  margin-top:6px;
-  display:block;
-  background:transparent !important;
-  box-shadow:none !important;
-  padding:0 !important;
+  margin-top:5px;
+  display:inline-block;
+  background:transparent;
+  padding:0;
 }
-
-.saving.green { color:#58d46d; }
-.saving.red { color:#ff4c4c; }
+.savingGood { color:#58d46d; }
+.savingBad { color:#ff4c4c; }
 
 .greyed {
   opacity:.35;
@@ -87,7 +75,7 @@ footer {
 
 <header>
 <h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-<div class="clock" id="clock">Loading…</div>
+<div class="clock" id="clock">Loading time…</div>
 </header>
 
 <h2>Today</h2>
@@ -100,144 +88,257 @@ footer {
 <div id="tomorrow-green-early"></div>
 <div id="tomorrow-amber"></div>
 <div id="tomorrow-red"></div>
+<div id="tomorrow-green-late"></div>
 
 <script>
 const BASELINE = 25.65;
 
 function updateClock(){
-  document.getElementById("clock").textContent =
-    new Date().toLocaleString("en-GB");
+  document.getElementById("clock").textContent = new Date().toLocaleString("en-GB");
 }
-setInterval(updateClock,1000);
+setInterval(updateClock, 1000);
 updateClock();
 
 function savingText(price){
-  const pct=((BASELINE-price)/BASELINE)*100;
-  return pct>=0
-    ? `<div class="saving green">▼ ${pct.toFixed(0)} percent below baseline</div>`
-    : `<div class="saving red">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
+  const pct = ((BASELINE - price) / BASELINE) * 100;
+  if (pct >= 0) return `<div class="saving savingGood">▼ ${pct.toFixed(0)} percent below baseline</div>`;
+  return `<div class="saving savingBad">▲ ${Math.abs(pct).toFixed(0)} percent above baseline</div>`;
 }
 
 function buildCard(id, band, price, time){
-  const el=document.getElementById(id);
-  const pending=price==null;
+  const el = document.getElementById(id);
+  const pending = price == null || Number.isNaN(price);
+  el.innerHTML = `
+    <div class="band-card ${band} ${pending ? "greyed" : ""}" id="${id}-card">
+      <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
+      ${pending ? `<div class="price">Price not yet published</div>` : `<div class="price">${Number(price).toFixed(2)}p per kWh</div>`}
+      <div>${time}</div>
+      ${pending ? `<div class="saving">Awaiting publication</div>` : savingText(Number(price))}
+    </div>
+  `;
+}
 
-  el.innerHTML=`
-  <div class="band-card ${band} ${pending?"greyed":""}" id="${id}-card">
-    <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
-    ${pending
-      ? `<div class="price">Price not yet published</div>`
-      : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
-    <div>${time}</div>
-    ${pending ? `<div class="saving">Awaiting publication</div>` : savingText(price)}
-  </div>`;
+function clearHighlights(){
+  const cards = document.querySelectorAll(".band-card.current");
+  cards.forEach(c => c.classList.remove("current"));
 }
 
 function highlight(id){
-  const el=document.getElementById(id+"-card");
-  if(el) el.classList.add("current");
+  const el = document.getElementById(id + "-card");
+  if (el) el.classList.add("current");
 }
 
-function highlightNow(){
-  const d=new Date();
-  const m=d.getHours()*60+d.getMinutes();
-
-  if(m>=1 && m<360) highlight("today-green-early");
-  if((m>=360 && m<960) || (m>=1140 && m<1380)) highlight("today-amber");
-  if(m>=960 && m<1140) highlight("today-red");
-  if(m>=1380) highlight("today-green-late");
+function minutesNow(){
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
 }
 
-fetch("data.json?ts="+Date.now())
-.then(r=>r.json())
-.then(data=>{
-  const t=data.today;
-  const tom=data.tomorrow;
+function inRange(m, sh, sm, eh, em){
+  const s = sh * 60 + sm;
+  const e = eh * 60 + em;
+  return m >= s && m < e;
+}
 
-  buildCard("today-green-early","green",t.green.price,"00:01 - 06:00");
-  buildCard("today-amber","amber",t.amber.price,"06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("today-red","red",t.red.price,"16:00 - 19:00");
+function localDayKey(dateObj){
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
-  buildCard("today-green-late","green",
-    tom.green && tom.green.start.includes("23:00") ? tom.green.price : null,
-    "23:00 - 00:00"
-  );
+function addDaysLocal(dateObj, days){
+  const d = new Date(dateObj);
+  d.setDate(d.getDate() + days);
+  return d;
+}
 
-  buildCard("tomorrow-green-early","green",
-    tom.green && tom.green.start.includes("23:00") ? tom.green.price : null,
-    "00:01 - 06:00"
-  );
+function parseIso(s){
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
-  buildCard("tomorrow-amber","amber",
-    tom.amber ? tom.amber.price : null,
-    "06:00 - 16:00 & 19:00 - 23:00"
-  );
+function assignDayForBand(band, obj){
+  if (!obj || obj.price == null || !obj.start || !obj.end) return null;
+  const start = parseIso(obj.start);
+  const end = parseIso(obj.end);
+  if (!start || !end) return null;
 
-  buildCard("tomorrow-red","red",
-    tom.red ? tom.red.price : null,
-    "16:00 - 19:00"
-  );
+  if (band === "green") {
+    return localDayKey(end);
+  }
+  return localDayKey(start);
+}
 
-  highlightNow();
-});
+function buildDayMap(data){
+  const map = {};
+
+  function put(dayKey, band, obj){
+    if (!dayKey) return;
+    if (!map[dayKey]) map[dayKey] = { green:null, amber:null, red:null };
+    map[dayKey][band] = obj && obj.price != null ? obj : map[dayKey][band];
+  }
+
+  if (data && data.today){
+    ["green","amber","red"].forEach(b => put(assignDayForBand(b, data.today[b]), b, data.today[b]));
+  }
+  if (data && data.tomorrow){
+    ["green","amber","red"].forEach(b => put(assignDayForBand(b, data.tomorrow[b]), b, data.tomorrow[b]));
+  }
+
+  return map;
+}
+
+function getDisplayedDays(dayMap){
+  const now = new Date();
+  const todayKey = localDayKey(now);
+  const tomorrowKey = localDayKey(addDaysLocal(now, 1));
+  const yesterdayKey = localDayKey(addDaysLocal(now, -1));
+
+  const today = dayMap[todayKey] || null;
+
+  const m = minutesNow();
+  const afterMidday = m >= 12 * 60;
+
+  const tomorrow = (afterMidday && dayMap[tomorrowKey] && dayMap[tomorrowKey].green && dayMap[tomorrowKey].amber && dayMap[tomorrowKey].red)
+    ? dayMap[tomorrowKey]
+    : null;
+
+  const lateGreenForToday = (inRange(m, 23, 0, 24, 0) && tomorrow && tomorrow.green) ? tomorrow.green : null;
+
+  return { todayKey, tomorrowKey, yesterdayKey, today, tomorrow, lateGreenForToday };
+}
+
+function renderAll(data){
+  const dayMap = buildDayMap(data);
+  const { today, tomorrow, lateGreenForToday } = getDisplayedDays(dayMap);
+
+  const todayGreen = today && today.green ? today.green.price : null;
+  const todayAmber = today && today.amber ? today.amber.price : null;
+  const todayRed = today && today.red ? today.red.price : null;
+
+  buildCard("today-green-early", "green", todayGreen, "00:01 - 06:00");
+  buildCard("today-amber", "amber", todayAmber, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("today-red", "red", todayRed, "16:00 - 19:00");
+  buildCard("today-green-late", "green", lateGreenForToday ? lateGreenForToday.price : null, "23:00 - 00:00");
+
+  const tomGreen = tomorrow && tomorrow.green ? tomorrow.green.price : null;
+  const tomAmber = tomorrow && tomorrow.amber ? tomorrow.amber.price : null;
+  const tomRed = tomorrow && tomorrow.red ? tomorrow.red.price : null;
+
+  buildCard("tomorrow-green-early", "green", tomGreen, "00:01 - 06:00");
+  buildCard("tomorrow-amber", "amber", tomAmber, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("tomorrow-red", "red", tomRed, "16:00 - 19:00");
+  buildCard("tomorrow-green-late", "green", null, "23:00 - 00:00");
+
+  applyHighlight();
+}
+
+function applyHighlight(){
+  clearHighlights();
+  const m = minutesNow();
+
+  if (inRange(m, 0, 1, 6, 0)) highlight("today-green-early");
+  else if (inRange(m, 6, 0, 16, 0) || inRange(m, 19, 0, 23, 0)) highlight("today-amber");
+  else if (inRange(m, 16, 0, 19, 0)) highlight("today-red");
+  else if (inRange(m, 23, 0, 24, 0)) highlight("today-green-late");
+}
+
+fetch("data.json?ts=" + Date.now())
+  .then(r => r.json())
+  .then(data => {
+    renderAll(data);
+    setInterval(applyHighlight, 15000);
+  })
+  .catch(() => {
+    renderAll({ today:{green:null,amber:null,red:null}, tomorrow:{green:null,amber:null,red:null} });
+  });
 </script>
 
-<hr style="margin-top:60px;opacity:.2">
+<hr style="margin-top:60px;opacity:.2" />
 
 <h2>Set Charging Price Threshold</h2>
 <p>Current threshold:</p>
 <h2 id="current-threshold">Loading…</h2>
 
 <input id="new-threshold" type="number"
-style="font-size:26px;padding:14px;width:260px;text-align:center;
-border-radius:12px;border:2px solid #444;background:#222;color:#fff">
+style="font-size:26px;padding:14px;width:260px;text-align:center;border-radius:12px;border:2px solid #444;background:#222;color:#fff" />
 
-<br><br>
+<br /><br />
 <button onclick="updateThreshold()"
 style="padding:14px 28px;font-size:22px;border-radius:12px">Save</button>
 
 <div id="threshold-status" style="margin-top:20px"></div>
 
 <script>
-const SUPABASE_URL="https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 async function loadThreshold(){
-  const res=await fetch(
+  const status = document.getElementById("threshold-status");
+  status.innerText = "";
+
+  const res = await fetch(
     `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
-    { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
-  );
-  const data=await res.json();
-  document.getElementById("current-threshold").innerText =
-    data.length ? data[0].value : "Not set";
-}
-
-async function updateThreshold(){
-  const v=document.getElementById("new-threshold").value;
-  if(!v) return;
-
-  const res=await fetch(
-    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
     {
-      method:"PATCH",
-      headers:{
-        "Content-Type":"application/json",
-        apikey:SUPABASE_KEY,
-        Authorization:`Bearer ${SUPABASE_KEY}`,
-        Prefer:"return=representation"
-      },
-      body:JSON.stringify({value:v})
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Accept: "application/json"
+      }
     }
   );
 
-  if(!res.ok){
-    document.getElementById("threshold-status").innerText="Error saving value";
+  if (!res.ok){
+    document.getElementById("current-threshold").innerText = "Not set";
+    status.innerText = "Error loading value";
     return;
   }
 
-  const d=await res.json();
-  document.getElementById("current-threshold").innerText=d[0].value;
-  document.getElementById("threshold-status").innerText="Saved";
+  const data = await res.json();
+  const value = (Array.isArray(data) && data.length) ? data[0].value : null;
+  document.getElementById("current-threshold").innerText = value != null ? value : "Not set";
+  document.getElementById("new-threshold").value = value != null ? value : "";
+}
+
+async function updateThreshold(){
+  const status = document.getElementById("threshold-status");
+  status.innerText = "";
+
+  const v = document.getElementById("new-threshold").value;
+  if (v == null || String(v).trim() === ""){
+    status.innerText = "Enter a value";
+    return;
+  }
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Prefer: "return=representation",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ value: String(v) })
+    }
+  );
+
+  if (!res.ok){
+    status.innerText = "Error saving value";
+    return;
+  }
+
+  const d = await res.json();
+  if (Array.isArray(d) && d.length && d[0].value != null){
+    document.getElementById("current-threshold").innerText = d[0].value;
+    status.innerText = "Saved";
+  } else {
+    status.innerText = "Saved, but no value returned";
+    await loadThreshold();
+  }
 }
 
 loadThreshold();
