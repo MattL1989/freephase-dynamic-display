@@ -155,7 +155,7 @@ function dayKey(d) {
   return d.toISOString().slice(0,10);
 }
 
-fetch("data.json?ts=" + Date.now())
+fetch(`data.json?v=${Date.now()}`)
 .then(r => r.json())
 .then(data => {
   const today = new Date();
