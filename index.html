@@ -120,7 +120,7 @@ function pctText(price) {
   return `${dir} ${Math.abs(p).toFixed(0)} percent ${p >= 0 ? "below" : "above"} baseline`;
 }
 
-function buildCard(id, band, price, time) {
+function buildCard(id, band, price, time, startIso, endIso) {
   const el = document.getElementById(id);
   const pending = price == null;
 
@@ -205,7 +205,6 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
   buildCard("tomorrow-amber", "amber", ma?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
   buildCard("tomorrow-red", "red", mr?.price ?? null, "16:00 - 19:00");
 
-  highlightCurrent();
 });
 
 async function loadThreshold() {
