@@ -34,7 +34,7 @@ h2 { margin:36px 0 14px; }
 
 .green { background:#1f8f2e; }
 .amber { background:#c9a200; }
-.red   { background:#b00000; }
+.red { background:#b00000; }
 
 .greyed {
   opacity:0.35;
@@ -71,10 +71,15 @@ footer {
 </header>
 
 <h2>Today</h2>
-<div id="today"></div>
+<div id="today-green-morning"></div>
+<div id="today-amber"></div>
+<div id="today-red"></div>
+<div id="today-green-late"></div>
 
 <h2>Tomorrow</h2>
-<div id="tomorrow"></div>
+<div id="tomorrow-green-morning"></div>
+<div id="tomorrow-amber"></div>
+<div id="tomorrow-red"></div>
 
 <hr style="margin:60px 0;opacity:0.25">
 
@@ -97,7 +102,11 @@ EDF FreePhase Display by Matt Lewis • Auto updated hourly via GitHub Actions
 </footer>
 
 <script>
-/* ---------------- CLOCK ---------------- */
+const BASELINE = 25.65;
+
+const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+
 function updateClock() {
   document.getElementById("clock").textContent =
     new Date().toLocaleString("en-GB");
@@ -105,58 +114,118 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-/* ---------------- CONFIG ---------------- */
-const BASELINE = 25.65;
-
-const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
-
-/* ---------------- HELPERS ---------------- */
 function pctText(price) {
   const p = ((BASELINE - price) / BASELINE) * 100;
   const dir = p >= 0 ? "▼" : "▲";
   return `${dir} ${Math.abs(p).toFixed(0)} percent ${p >= 0 ? "below" : "above"} baseline`;
 }
 
-function isCurrent(startIso, endIso) {
+function isCurrentBand(startIso, endIso) {
   if (!startIso || !endIso) return false;
   const now = new Date();
   return now >= new Date(startIso) && now < new Date(endIso);
 }
 
-function bandCard(band, data, timeLabel) {
-  const pending = !data;
-  const current = data && isCurrent(data.start, data.end);
+function buildCard(id, band, price, time, startIso, endIso) {
+  const el = document.getElementById(id);
+  const pending = price == null;
+  const current = isCurrentBand(startIso, endIso);
 
-  return `
+  el.innerHTML = `
     <div class="band-card ${band} ${pending ? "greyed" : ""} ${current ? "current" : ""}">
       <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
       ${pending
         ? `<div class="price">Price not yet published</div>`
-        : `<div class="price">${data.price.toFixed(2)}p per kWh</div>`}
-      <div>${timeLabel}</div>
-      ${pending ? `<div>Awaiting publication</div>` : `<div>${pctText(data.price)}</div>`}
+        : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
+      <div>${time}</div>
+      ${pending ? `<div>Awaiting publication</div>` : `<div>${pctText(price)}</div>`}
     </div>
   `;
 }
 
-/* ---------------- DATA LOAD ---------------- */
+function dayKey(d) {
+  return d.toISOString().slice(0,10);
+}
+
 fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(), {
-  cache: "no-store"
+  cache:"no-store"
 })
 .then(r => r.json())
 .then(data => {
 
-  const todayEl = document.getElementById("today");
-  const tomorrowEl = document.getElementById("tomorrow");
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
 
-  todayEl.innerHTML = `
-    ${bandCard("green", data.today.green, "00:01 - 06:00")}
-    ${bandCard("amber", data.today.amber, "06:00 - 16:00 & 19:00 - 23:00")}
-    ${bandCard("red", data.today.red, "16:00 - 19:00")}
-    ${bandCard("green", data.today.green_late ?? null, "23:00 - 00:00")}
-  `;
+  const todayKey = dayKey(today);
+  const tomorrowKey = dayKey(tomorrow);
 
-  tomorrowEl.innerHTML = `
-    ${bandCard("green", data.tomorrow.green, "00:01 - 06:00")}
-    ${band
+  function pick(band, key, hourCheck) {
+    return Object.values(data).flatMap(d =>
+      d[band] &&
+      new Date(d[band].start).toISOString().slice(0,10) === key &&
+      (hourCheck == null || new Date(d[band].start).getUTCHours() === hourCheck)
+        ? [d[band]]
+        : []
+    )[0] || null;
+  }
+
+  const tg = pick("green", todayKey, 0);
+  const ta = pick("amber", todayKey);
+  const tr = pick("red", todayKey);
+  const tlg = pick("green", todayKey, 23);
+
+  const mg = pick("green", tomorrowKey, 0);
+  const ma = pick("amber", tomorrowKey);
+  const mr = pick("red", tomorrowKey);
+
+  buildCard("today-green-morning","green",tg?.price ?? null,"00:01 - 06:00",tg?.start,tg?.end);
+  buildCard("today-amber","amber",ta?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00",ta?.start,ta?.end);
+  buildCard("today-red","red",tr?.price ?? null,"16:00 - 19:00",tr?.start,tr?.end);
+  buildCard("today-green-late","green",tlg?.price ?? null,"23:00 - 00:00",tlg?.start,tlg?.end);
+
+  buildCard("tomorrow-green-morning","green",mg?.price ?? null,"00:01 - 06:00",mg?.start,mg?.end);
+  buildCard("tomorrow-amber","amber",ma?.price ?? null,"06:00 - 16:00 & 19:00 - 23:00",ma?.start,ma?.end);
+  buildCard("tomorrow-red","red",mr?.price ?? null,"16:00 - 19:00",mr?.start,mr?.end);
+});
+
+async function loadThreshold() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
+    { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
+  );
+  const data = await res.json();
+  document.getElementById("current-threshold").innerText =
+    data.length ? data[0].value : "Not set";
+  document.getElementById("new-threshold").value = "";
+}
+
+async function updateThreshold() {
+  const v = document.getElementById("new-threshold").value;
+  if (!v) return;
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
+    {
+      method:"PATCH",
+      headers:{
+        "Content-Type":"application/json",
+        apikey:SUPABASE_KEY,
+        Authorization:`Bearer ${SUPABASE_KEY}`,
+        Prefer:"return=representation"
+      },
+      body:JSON.stringify({ value:v })
+    }
+  );
+
+  document.getElementById("threshold-status").innerText =
+    res.ok ? "Saved" : "Error saving value";
+
+  loadThreshold();
+}
+
+loadThreshold();
+</script>
+
+</body>
+</html>
