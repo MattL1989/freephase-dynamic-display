@@ -171,41 +171,20 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
 })
 .then(r => r.json())
 .then(data => {
-const tg = data.today.green;
-const ta = data.today.amber;
-const tr = data.today.red;
 
-const tlg =
-  data.today.green &&
-  new Date(data.today.green.start).getUTCHours() === 23
-    ? data.today.green
-    : null;
+  const tg = data.today.green;
+  const ta = data.today.amber;
+  const tr = data.today.red;
 
-const mg = data.tomorrow.green;
-const ma = data.tomorrow.amber;
-const mr = data.tomorrow.red;
+  const tlg =
+    data.today.green &&
+    new Date(data.today.green.start).getUTCHours() === 23
+      ? data.today.green
+      : null;
 
-
-  function greenMorningFor(dayKeyValue) {
-    return Object.values(data).flatMap(d =>
-      d.green && new Date(d.green.end).toISOString().slice(0,10) === dayKeyValue
-        ? [d.green]
-        : []
-    )[0] || null;
-  }
-
-  const tg = greenMorningFor(todayKey);
-  const ta = bandByStart("amber", todayKey);
-  const tr = bandByStart("red", todayKey);
-
-  const tlg = bandByStart("green", todayKey) &&
-              new Date(bandByStart("green", todayKey).start).getUTCHours() === 23
-              ? bandByStart("green", todayKey)
-              : null;
-
-  const mg = greenMorningFor(tomorrowKey);
-  const ma = bandByStart("amber", tomorrowKey);
-  const mr = bandByStart("red", tomorrowKey);
+  const mg = data.tomorrow.green;
+  const ma = data.tomorrow.amber;
+  const mr = data.tomorrow.red;
 
   buildCard("today-green-morning", "green", tg?.price ?? null, "00:01 - 06:00");
   buildCard("today-amber", "amber", ta?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
