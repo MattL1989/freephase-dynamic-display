@@ -136,14 +136,14 @@ function buildCard(id, band, price, time) {
   `;
 }
 
-function isCurrentBand(startIso, endIso) {
-  if (!startIso || !endIso) return false
+function highlightCurrent() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
 
-  const now = new Date()
-  const start = new Date(startIso)
-  const end = new Date(endIso)
-
-  return now >= start && now < end
+  if (mins >= 1 && mins < 360) mark("today-green-morning");
+  else if (mins >= 360 && mins < 960) mark("today-amber");
+  else if (mins >= 960 && mins < 1140) mark("today-red");
+  else mark("today-green-late");
 }
 
 function mark(id) {
@@ -155,6 +155,7 @@ function dayKey(d) {
   return d.toISOString().slice(0,10);
 }
 
+fetch(`data.json?ts=${Date.now()}`, { cache: "no-store" })
 fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(), {
   cache: "no-store"
 })
