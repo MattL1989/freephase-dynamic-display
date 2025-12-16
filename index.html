@@ -171,32 +171,30 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
 })
 .then(r => r.json())
 .then(data => {
+  // JSON is already structured as { today: { green, amber, red }, tomorrow: { green, amber, red } }
 
-  const tg = data.today.green;
-  const ta = data.today.amber;
-  const tr = data.today.red;
+  const todayGreenMorning = data.today?.green ?? null;      // 23:00 yesterday to 06:00 today
+  const todayAmber = data.today?.amber ?? null;             // 06:00 to 16:00 today (your workflow) 
+  const todayRed = data.today?.red ?? null;                 // 16:00 to 19:00 today
 
-  const tlg =
-    data.today.green &&
-    new Date(data.today.green.start).getUTCHours() === 23
-      ? data.today.green
-      : null;
+  // IMPORTANT: tonight 23:00 to 00:00 is the start of TOMORROW.green in your JSON
+  const tonightGreen = data.tomorrow?.green ?? null;        // 23:00 today to 06:00 tomorrow
 
-  const mg = data.tomorrow.green;
-  const ma = data.tomorrow.amber;
-  const mr = data.tomorrow.red;
+  const tomorrowGreenMorning = data.tomorrow?.green ?? null; // 00:01 to 06:00 tomorrow (same price as tonightGreen)
+  const tomorrowAmber = data.tomorrow?.amber ?? null;
+  const tomorrowRed = data.tomorrow?.red ?? null;
 
-  buildCard("today-green-morning", "green", tg?.price ?? null, "00:01 - 06:00");
-  buildCard("today-amber", "amber", ta?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("today-red", "red", tr?.price ?? null, "16:00 - 19:00");
-  buildCard("today-green-late", "green", tlg?.price ?? null, "23:00 - 00:00");
+  buildCard("today-green-morning", "green", todayGreenMorning?.price ?? null, "00:01 - 06:00");
+  buildCard("today-amber", "amber", todayAmber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("today-red", "red", todayRed?.price ?? null, "16:00 - 19:00");
+  buildCard("today-green-late", "green", tonightGreen?.price ?? null, "23:00 - 00:00");
 
-  buildCard("tomorrow-green-morning", "green", mg?.price ?? null, "00:01 - 06:00");
-  buildCard("tomorrow-amber", "amber", ma?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("tomorrow-red", "red", mr?.price ?? null, "16:00 - 19:00");
+  buildCard("tomorrow-green-morning", "green", tomorrowGreenMorning?.price ?? null, "00:01 - 06:00");
+  buildCard("tomorrow-amber", "amber", tomorrowAmber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("tomorrow-red", "red", tomorrowRed?.price ?? null, "16:00 - 19:00");
 
   highlightCurrent();
-});
+})
 
 async function loadThreshold() {
   const res = await fetch(
