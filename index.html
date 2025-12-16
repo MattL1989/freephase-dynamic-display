@@ -171,25 +171,25 @@ fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/mai
 })
 .then(r => r.json())
 .then(data => {
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
+const tg = data.today.green;
+const ta = data.today.amber;
+const tr = data.today.red;
 
-  const todayKey = dayKey(today);
-  const tomorrowKey = dayKey(tomorrow);
+const tlg =
+  data.today.green &&
+  new Date(data.today.green.start).getUTCHours() === 23
+    ? data.today.green
+    : null;
+
+const mg = data.tomorrow.green;
+const ma = data.tomorrow.amber;
+const mr = data.tomorrow.red;
+
 
   function greenMorningFor(dayKeyValue) {
     return Object.values(data).flatMap(d =>
       d.green && new Date(d.green.end).toISOString().slice(0,10) === dayKeyValue
         ? [d.green]
-        : []
-    )[0] || null;
-  }
-
-  function bandByStart(band, dayKeyValue) {
-    return Object.values(data).flatMap(d =>
-      d[band] && new Date(d[band].start).toISOString().slice(0,10) === dayKeyValue
-        ? [d[band]]
         : []
     )[0] || null;
   }
