@@ -140,10 +140,21 @@ function highlightCurrent() {
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
 
-  if (mins >= 1 && mins < 360) mark("today-green-morning");
-  else if (mins >= 360 && mins < 960) mark("today-amber");
-  else if (mins >= 960 && mins < 1140) mark("today-red");
-  else mark("today-green-late");
+  if (mins >= 1 && mins < 360) {
+    mark("today-green-morning");
+  }
+  else if (mins >= 360 && mins < 960) {
+    mark("today-amber");
+  }
+  else if (mins >= 960 && mins < 1140) {
+    mark("today-red");
+  }
+  else if (mins >= 1140 && mins < 1380) {
+    mark("today-amber");
+  }
+  else {
+    mark("today-green-late");
+  }
 }
 
 function mark(id) {
