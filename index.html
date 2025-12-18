@@ -70,6 +70,28 @@ footer {
 <div class="clock" id="clock"></div>
 </header>
 
+<div id="free-electricity"></div>
+
+.free-card {
+  width:92%;
+  margin:20px auto;
+  padding:28px;
+  border-radius:18px;
+  font-size:28px;
+  background:#007cff;
+  box-shadow:0 0 30px rgba(0,124,255,0.6);
+}
+
+.free-card .title {
+  font-weight:700;
+  letter-spacing:1px;
+}
+
+.free-card .time {
+  margin-top:8px;
+  font-size:24px;
+}
+  
 <h2>Today</h2>
 <div id="today-green-morning"></div>
 <div id="today-amber"></div>
@@ -225,6 +247,48 @@ async function updateThreshold() {
     }
   );
 
+async function loadFreeElectricity() {
+  const el = document.getElementById("free-electricity")
+
+  try {
+    const res = await fetch(
+      "https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
+    )
+    const data = await res.json()
+
+    const todayKey = new Date().toISOString().slice(0,10)
+
+    const freeSlots = data.results
+      .filter(r =>
+        r.value_inc_vat === 0 &&
+        r.valid_from.startsWith(todayKey)
+      )
+      .sort((a,b) => new Date(a.valid_from) - new Date(b.valid_from))
+
+    if (!freeSlots.length) return
+
+    const start = new Date(freeSlots[0].valid_from)
+    const end = new Date(freeSlots[freeSlots.length - 1].valid_to)
+
+    const fmt = d => d.toLocaleTimeString("en-GB", {
+      hour:"2-digit",
+      minute:"2-digit"
+    })
+
+    el.innerHTML = `
+      <div class="free-card">
+        <div class="title">⚡ FREE ELECTRICITY</div>
+        <div class="time">${fmt(start)} – ${fmt(end)}</div>
+        <div>100 percent below baseline</div>
+      </div>
+    `
+  } catch (e) {
+    console.error("Free electricity fetch failed", e)
+  }
+}
+
+loadFreeElectricity()
+  
   document.getElementById("threshold-status").innerText =
     res.ok ? "Saved" : "Error saving value";
 
