@@ -64,7 +64,7 @@ footer {
   margin:20px auto;
   padding:28px;
   border-radius:18px;
-  font-size:28px;
+  font-size:32px;
   background:#007cff;
   box-shadow:0 0 30px rgba(0,124,255,0.6);
 }
@@ -161,16 +161,13 @@ async function loadFreeElectricity() {
       <div class="free-card">
         <div class="title">⚡ FREE ELECTRICITY</div>
         <div class="time">${fmt(start)} – ${fmt(end)}</div>
-        <div>100 percent below baseline</div>
-      </div>
+        </div>
     `
   } catch (e) {
     console.error("Free electricity fetch failed", e)
   }
 }
 
-
-  
 function updateClock() {
   document.getElementById("clock").textContent =
     new Date().toLocaleString("en-GB");
@@ -288,7 +285,6 @@ async function updateThreshold() {
       body:JSON.stringify({ value:v })
     }
   );
-
 
   document.getElementById("threshold-status").innerText =
     res.ok ? "Saved" : "Error saving value";
