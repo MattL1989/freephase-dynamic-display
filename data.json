@@ -20,8 +20,23 @@
     }
   },
   "tomorrow": {
-    "green": null,
-    "amber": null,
-    "red": null
+    "green": {
+      "price": 15.800399999999998,
+      "start": "2025-12-29T23:00:00Z",
+      "end": "2025-12-30T06:00:00Z",
+      "band": "green"
+    },
+    "amber": {
+      "price": 18.330899999999993,
+      "start": "2025-12-30T06:00:00Z",
+      "end": "2025-12-30T16:00:00Z",
+      "band": "green"
+    },
+    "red": {
+      "price": 28.32375,
+      "start": "2025-12-30T16:00:00Z",
+      "end": "2025-12-30T19:00:00Z",
+      "band": "amber"
+    }
   }
 }
