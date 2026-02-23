@@ -1,26 +1,6 @@
 {
   "today": {
     "green": {
-      "price": 8.06295,
-      "start": "2026-02-21T23:00:00Z",
-      "end": "2026-02-22T06:00:00Z",
-      "band": "green"
-    },
-    "amber": {
-      "price": 8.5596,
-      "start": "2026-02-22T06:00:00Z",
-      "end": "2026-02-22T16:00:00Z",
-      "band": "green"
-    },
-    "red": {
-      "price": 25.783799999999996,
-      "start": "2026-02-22T16:00:00Z",
-      "end": "2026-02-22T19:00:00Z",
-      "band": "amber"
-    }
-  },
-  "tomorrow": {
-    "green": {
       "price": 5.3151,
       "start": "2026-02-22T23:00:00Z",
       "end": "2026-02-23T06:00:00Z",
@@ -38,5 +18,10 @@
       "end": "2026-02-23T19:00:00Z",
       "band": "amber"
     }
+  },
+  "tomorrow": {
+    "green": null,
+    "amber": null,
+    "red": null
   }
 }
