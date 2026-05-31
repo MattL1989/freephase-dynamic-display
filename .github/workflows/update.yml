@@ -27,13 +27,23 @@ jobs:
 
           API="https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
 
-          TODAY=$(date -u +"%Y-%m-%d")
-          TOMORROW=$(date -u -d "+1 day" +"%Y-%m-%d")
-          YESTERDAY=$(date -u -d "yesterday" +"%Y-%m-%d")
-          DAY_AFTER=$(date -u -d "+2 days" +"%Y-%m-%d")
+          # EDF publishes its band windows in UK local time (BST/GMT):
+          #   Green  23:00 - 06:00
+          #   Amber  06:00 - 16:00 AND 19:00 - 23:00
+          #   Red    16:00 - 19:00
+          # Compute dates and boundaries in Europe/London, then convert to UTC for the API filter.
+          TODAY=$(TZ=Europe/London date +"%Y-%m-%d")
+          TOMORROW=$(TZ=Europe/London date -d "+1 day" +"%Y-%m-%d")
+          YESTERDAY=$(TZ=Europe/London date -d "yesterday" +"%Y-%m-%d")
+          DAY_AFTER=$(TZ=Europe/London date -d "+2 days" +"%Y-%m-%d")
 
-          PERIOD_FROM="${YESTERDAY}T00:00:00Z"
-          PERIOD_TO="${DAY_AFTER}T23:59:59Z"
+          # Convert "YYYY-MM-DD HH:MM" interpreted as Europe/London into a UTC ISO 8601 string
+          to_utc() {
+            TZ=UTC date -d "TZ=\"Europe/London\" $1" -u +"%Y-%m-%dT%H:%M:%SZ"
+          }
+
+          PERIOD_FROM="$(to_utc "$YESTERDAY 00:00")"
+          PERIOD_TO="$(to_utc "$DAY_AFTER 23:59")"
 
           curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
 
@@ -43,27 +53,31 @@ jobs:
             exit 0
           fi
 
+          # Average all half-hourly slots in one window, or in the union of two windows
+          # (used for amber, which spans morning AND evening).
           extract_band() {
-            local start=$1
-            local end=$2
+            local s1=$1
+            local e1=$2
+            local s2=${3:-}
+            local e2=${4:-}
 
-            jq -r --arg s "$start" --arg e "$end" '
+            jq -r --arg s1 "$s1" --arg e1 "$e1" --arg s2 "$s2" --arg e2 "$e2" '
               .results
-              | map(select(.valid_from >= $s and .valid_from < $e))
+              | map(select(
+                  (.valid_from >= $s1 and .valid_from < $e1)
+                  or ($s2 != "" and .valid_from >= $s2 and .valid_from < $e2)
+                ))
               | if length == 0 then null else
                   (
                     . as $items
+                    | (($items | map(.value_inc_vat) | add) / length) as $avg
                     | {
-                        # EDF returns pence, keep pence
-                        price: ($items | map(.value_inc_vat) | add / length),
+                        price: $avg,
                         start: ($items | map(.valid_from) | min),
                         end: ($items | map(.valid_to) | max),
-
                         band:
-                          (if (($items | map(.value_inc_vat) | add / length) / 100) < 0.20
-                            then "green"
-                           elif (($items | map(.value_inc_vat) | add / length) / 100) < 0.30
-                            then "amber"
+                          (if ($avg / 100) < 0.20 then "green"
+                           elif ($avg / 100) < 0.30 then "amber"
                            else "red"
                           end)
                       }
@@ -72,32 +86,36 @@ jobs:
             ' raw.json
           }
 
-          # Time windows
-          GREEN_T_START="${YESTERDAY}T23:00:00Z"
-          GREEN_T_END="${TODAY}T06:00:00Z"
+          # UK-local band windows (converted to UTC for the API filter)
+          GREEN_T_START=$(to_utc   "$YESTERDAY 23:00")
+          GREEN_T_END=$(to_utc     "$TODAY 06:00")
 
-          AMBER_T_START="${TODAY}T06:00:00Z"
-          AMBER_T_END="${TODAY}T16:00:00Z"
+          AMBER_T_M_START=$(to_utc "$TODAY 06:00")
+          AMBER_T_M_END=$(to_utc   "$TODAY 16:00")
+          AMBER_T_E_START=$(to_utc "$TODAY 19:00")
+          AMBER_T_E_END=$(to_utc   "$TODAY 23:00")
 
-          RED_T_START="${TODAY}T16:00:00Z"
-          RED_T_END="${TODAY}T19:00:00Z"
+          RED_T_START=$(to_utc     "$TODAY 16:00")
+          RED_T_END=$(to_utc       "$TODAY 19:00")
 
-          GREEN_TM_START="${TODAY}T23:00:00Z"
-          GREEN_TM_END="${TOMORROW}T06:00:00Z"
+          GREEN_TM_START=$(to_utc  "$TODAY 23:00")
+          GREEN_TM_END=$(to_utc    "$TOMORROW 06:00")
 
-          AMBER_TM_START="${TOMORROW}T06:00:00Z"
-          AMBER_TM_END="${TOMORROW}T16:00:00Z"
+          AMBER_TM_M_START=$(to_utc "$TOMORROW 06:00")
+          AMBER_TM_M_END=$(to_utc   "$TOMORROW 16:00")
+          AMBER_TM_E_START=$(to_utc "$TOMORROW 19:00")
+          AMBER_TM_E_END=$(to_utc   "$TOMORROW 23:00")
 
-          RED_TM_START="${TOMORROW}T16:00:00Z"
-          RED_TM_END="${TOMORROW}T19:00:00Z"
+          RED_TM_START=$(to_utc    "$TOMORROW 16:00")
+          RED_TM_END=$(to_utc      "$TOMORROW 19:00")
 
           jq -n \
-            --argjson tgreen "$(extract_band "$GREEN_T_START" "$GREEN_T_END")" \
-            --argjson tamber "$(extract_band "$AMBER_T_START" "$AMBER_T_END")" \
-            --argjson tred "$(extract_band "$RED_T_START" "$RED_T_END")" \
-            --argjson tmgreen "$(extract_band "$GREEN_TM_START" "$GREEN_TM_END")" \
-            --argjson tmamber "$(extract_band "$AMBER_TM_START" "$AMBER_TM_END")" \
-            --argjson tmred "$(extract_band "$RED_TM_START" "$RED_TM_END")" \
+            --argjson tgreen  "$(extract_band "$GREEN_T_START"   "$GREEN_T_END")" \
+            --argjson tamber  "$(extract_band "$AMBER_T_M_START" "$AMBER_T_M_END" "$AMBER_T_E_START" "$AMBER_T_E_END")" \
+            --argjson tred    "$(extract_band "$RED_T_START"     "$RED_T_END")" \
+            --argjson tmgreen "$(extract_band "$GREEN_TM_START"  "$GREEN_TM_END")" \
+            --argjson tmamber "$(extract_band "$AMBER_TM_M_START" "$AMBER_TM_M_END" "$AMBER_TM_E_START" "$AMBER_TM_E_END")" \
+            --argjson tmred   "$(extract_band "$RED_TM_START"    "$RED_TM_END")" \
             '{
               today: {
                 green: $tgreen,
