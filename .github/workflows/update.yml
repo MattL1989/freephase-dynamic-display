@@ -4,9 +4,13 @@ on:
   schedule:
     # Roll "today" forward shortly after midnight
     - cron: "30 0 * * *"
-    # Primary midday window after EDF publishes tomorrow's prices (BST: 12:30 / GMT: 11:30)
+    # Multiple attempts during EDF's midday publication window.
+    # GitHub free-tier scheduled workflows are delayed by hours under load;
+    # listing several entries maximises the chance one lands close to EDF publish time.
+    - cron: "0 11 * * *"
     - cron: "30 11 * * *"
-    # Safety-net retry if EDF is late (BST: 15:00 / GMT: 14:00)
+    - cron: "0 12 * * *"
+    - cron: "0 13 * * *"
     - cron: "0 14 * * *"
   workflow_dispatch:
 
