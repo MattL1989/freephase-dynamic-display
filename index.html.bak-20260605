@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EDF FreePhase Dynamic</title>
+
+<style>
+body {
+  background:#000;
+  color:#fff;
+  font-family:Segoe UI,Arial,sans-serif;
+  text-align:center;
+  margin:0;
+}
+
+header { padding:30px 0 10px; }
+h1 { font-size:40px; margin-bottom:6px; }
+.clock { color:#aaa; margin-bottom:24px; }
+
+h2 { margin:36px 0 14px; }
+
+.band-card {
+  width:92%;
+  margin:14px auto;
+  padding:26px;
+  border-radius:18px;
+  font-size:26px;
+  box-shadow:0 0 25px rgba(0,0,0,0.45);
+}
+
+.band-card.current {
+  outline:3px solid #fff;
+}
+
+.green { background:#1f8f2e; }
+.amber { background:#c9a200; }
+.red   { background:#b00000; }
+
+.greyed {
+  opacity:0.35;
+  border:2px dashed #666;
+}
+
+.dot {
+  height:16px;
+  width:16px;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:10px;
+}
+
+.dot.green { background:#58d46d; }
+.dot.amber { background:#ffd84a; }
+.dot.red { background:#ff4c4c; }
+
+.price { font-size:34px; font-weight:600; margin:6px 0; }
+
+footer {
+  margin:50px 0 30px;
+  color:#666;
+  font-size:14px;
+} 
+.free-card {
+  width:92%;
+  margin:36px auto 44px;
+  padding:44px 40px;
+  border-radius:26px;
+  font-size:36px;
+
+  background:linear-gradient(
+    135deg,
+    #0a8cff 0%,
+    #0072d6 45%,
+    #005bb5 100%
+  );
+
+  box-shadow:
+    0 0 28px rgba(0,124,255,0.55),
+    0 0 60px rgba(0,124,255,0.35);
+}
+
+.free-card .title {
+  font-weight:900;
+  font-size:40px;
+  letter-spacing:1.6px;
+  margin-bottom:10px;
+}
+
+.free-card .time {
+  margin-top:6px;
+  font-size:30px;
+  opacity:0.95;
+}
+  
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>EDF FreePhase Dynamic - ST15 0WL</h1>
+<div class="clock" id="clock"></div>
+</header>
+
+<div id="free-electricity"></div>
+
+<h2>Today</h2>
+<div id="today-green-morning"></div>
+<div id="today-amber"></div>
+<div id="today-red"></div>
+<div id="today-green-late"></div>
+
+<h2>Tomorrow</h2>
+<div id="tomorrow-green-morning"></div>
+<div id="tomorrow-amber"></div>
+<div id="tomorrow-red"></div>
+
+<hr style="margin:60px 0;opacity:0.25">
+
+<h2>Set Charging Price Threshold</h2>
+<p>Current threshold:</p>
+<h2 id="current-threshold">Loading…</h2>
+
+<input id="new-threshold" type="number" placeholder="Enter new threshold"
+style="font-size:24px;padding:14px;width:260px;text-align:center;
+border-radius:12px;border:2px solid #444;background:#222;color:#fff">
+
+<br><br>
+<button onclick="updateThreshold()"
+style="padding:14px 28px;font-size:20px;border-radius:12px">Save</button>
+
+<div id="threshold-status" style="margin-top:16px"></div>
+
+<footer>
+EDF FreePhase Display by Matt Lewis • Auto updated hourly via GitHub Actions
+</footer>
+
+<script>
+const BASELINE = 25.65;
+
+const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
+
+async function loadFreeElectricity() {
+  const el = document.getElementById("free-electricity")
+
+  try {
+    const res = await fetch(
+      "https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
+    )
+    const data = await res.json()
+
+    const todayKey = new Date().toISOString().slice(0,10)
+
+    const freeSlots = data.results
+      .filter(r =>
+        r.value_inc_vat === 0 &&
+        r.valid_from.startsWith(todayKey)
+      )
+      .sort((a,b) => new Date(a.valid_from) - new Date(b.valid_from))
+
+    if (!freeSlots.length) return
+
+    const start = new Date(freeSlots[0].valid_from)
+    const end = new Date(freeSlots[freeSlots.length - 1].valid_to)
+
+    const fmt = d => d.toLocaleTimeString("en-GB", {
+      hour:"2-digit",
+      minute:"2-digit"
+    })
+
+    el.innerHTML = `
+      <div class="free-card">
+        <div class="title">⚡ FREE ELECTRICITY TODAY ⚡</div>
+        <div class="time">${fmt(start)} – ${fmt(end)}</div>
+        </div>
+    `
+  } catch (e) {
+    console.error("Free electricity fetch failed", e)
+  }
+}
+
+function updateClock() {
+  document.getElementById("clock").textContent =
+    new Date().toLocaleString("en-GB");
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function pctText(price) {
+  const p = ((BASELINE - price) / BASELINE) * 100;
+  const dir = p >= 0 ? "▼" : "▲";
+  return `${dir} ${Math.abs(p).toFixed(0)} percent ${p >= 0 ? "below" : "above"} baseline`;
+}
+
+function buildCard(id, band, price, time) {
+  const el = document.getElementById(id);
+  const pending = price == null;
+
+  el.innerHTML = `
+    <div class="band-card ${band} ${pending ? "greyed" : ""}" id="${id}-card">
+      <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
+      ${pending
+        ? `<div class="price">Price not yet published</div>`
+        : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
+      <div>${time}</div>
+      ${pending ? `<div>Awaiting publication</div>` : `<div>${pctText(price)}</div>`}
+    </div>
+  `;
+}
+
+function highlightCurrent() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+
+  if (mins >= 1 && mins < 360) {
+    mark("today-green-morning");
+  }
+  else if (mins >= 360 && mins < 960) {
+    mark("today-amber");
+  }
+  else if (mins >= 960 && mins < 1140) {
+    mark("today-red");
+  }
+  else if (mins >= 1140 && mins < 1380) {
+    mark("today-amber");
+  }
+  else {
+    mark("today-green-late");
+  }
+}
+
+function mark(id) {
+  const el = document.getElementById(id + "-card");
+  if (el) el.classList.add("current");
+}
+
+function dayKey(d) {
+  return d.toISOString().slice(0,10);
+}
+
+fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(), {
+  cache: "no-store"
+})
+.then(r => r.json())
+.then(data => {
+  // JSON is already structured as { today: { green, amber, red }, tomorrow: { green, amber, red } }
+
+  const todayGreenMorning = data.today?.green ?? null;      // 23:00 yesterday to 06:00 today
+  const todayAmber = data.today?.amber ?? null;             // 06:00 to 16:00 today (your workflow) 
+  const todayRed = data.today?.red ?? null;                 // 16:00 to 19:00 today
+
+  // IMPORTANT: tonight 23:00 to 00:00 is the start of TOMORROW.green in your JSON
+  const tonightGreen = data.tomorrow?.green ?? null;        // 23:00 today to 06:00 tomorrow
+
+  const tomorrowGreenMorning = data.tomorrow?.green ?? null; // 00:01 to 06:00 tomorrow (same price as tonightGreen)
+  const tomorrowAmber = data.tomorrow?.amber ?? null;
+  const tomorrowRed = data.tomorrow?.red ?? null;
+
+  buildCard("today-green-morning", "green", todayGreenMorning?.price ?? null, "00:01 - 06:00");
+  buildCard("today-amber", "amber", todayAmber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("today-red", "red", todayRed?.price ?? null, "16:00 - 19:00");
+  buildCard("today-green-late", "green", tonightGreen?.price ?? null, "23:00 - 00:00");
+
+  buildCard("tomorrow-green-morning", "green", tomorrowGreenMorning?.price ?? null, "00:01 - 06:00");
+  buildCard("tomorrow-amber", "amber", tomorrowAmber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
+  buildCard("tomorrow-red", "red", tomorrowRed?.price ?? null, "16:00 - 19:00");
+
+  highlightCurrent();
+})
+
+async function loadThreshold() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
+    { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
+  );
+  const data = await res.json();
+  document.getElementById("current-threshold").innerText =
+    data.length ? data[0].value : "Not set";
+  document.getElementById("new-threshold").value = "";
+}
+
+async function updateThreshold() {
+  const v = document.getElementById("new-threshold").value;
+  if (!v) return;
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
+    {
+      method:"PATCH",
+      headers:{
+        "Content-Type":"application/json",
+        apikey:SUPABASE_KEY,
+        Authorization:`Bearer ${SUPABASE_KEY}`,
+        Prefer:"return=representation"
+      },
+      body:JSON.stringify({ value:v })
+    }
+  );
+
+  document.getElementById("threshold-status").innerText =
+    res.ok ? "Saved" : "Error saving value";
+
+  loadThreshold();
+}
+  
+loadFreeElectricity()
+loadThreshold();
+</script>
+
+</body>
+</html>

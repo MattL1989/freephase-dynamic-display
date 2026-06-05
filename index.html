@@ -2,312 +2,411 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>EDF FreePhase Dynamic</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDF FreePhase Dynamic — ST15 0WL</title>
 <style>
-body {
-  background:#000;
-  color:#fff;
-  font-family:Segoe UI,Arial,sans-serif;
-  text-align:center;
-  margin:0;
-}
+  :root {
+    color-scheme: dark;
+    --bg: #050810;
+    --surface: #0e1320;
+    --surface-2: #161c2e;
+    --border: #1f2940;
+    --text: #f3f4f6;
+    --text-dim: #94a3b8;
+    --text-very-dim: #64748b;
+    --green: #1ee560;
+    --amber: #ffb020;
+    --red: #ff3a5a;
+    --cyan: #22d3ee;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;color:var(--text);min-height:100vh;
+    background:radial-gradient(ellipse at top,#0a1228 0%,var(--bg) 60%);
+    background-attachment:fixed;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Inter",system-ui,sans-serif}
+  .container{max-width:1400px;margin:0 auto;padding:28px 32px}
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;gap:24px}
+  .location{font-size:14px;letter-spacing:0.18em;color:var(--text-dim);text-transform:uppercase}
+  .location strong{color:var(--text);font-weight:600;letter-spacing:0.05em}
+  .clock{font-size:22px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;text-align:right}
+  .clock .date{color:var(--text-dim);font-size:12px;display:block;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;margin-top:2px}
+</content>
 
-header { padding:30px 0 10px; }
-h1 { font-size:40px; margin-bottom:6px; }
-.clock { color:#aaa; margin-bottom:24px; }
+  /* HERO NOW CARD */
+  .now-card{position:relative;border-radius:28px;padding:40px 44px;background:var(--surface);
+    border:1px solid var(--border);overflow:hidden;margin-bottom:36px}
+  .now-card::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(135deg,transparent 0%,var(--accent,transparent) 100%);opacity:0.12}
+  .now-card.green{--accent:var(--green);border-color:rgba(30,229,96,0.35)}
+  .now-card.amber{--accent:var(--amber);border-color:rgba(255,176,32,0.35)}
+  .now-card.red  {--accent:var(--red);  border-color:rgba(255,58,90,0.35)}
+  .now-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end}
+  .now-label{font-size:13px;letter-spacing:0.22em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;font-weight:600}
+  .now-band{font-size:28px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .now-dot{display:inline-block;width:16px;height:16px;border-radius:50%;box-shadow:0 0 22px currentColor;background:currentColor}
+  .now-card.green .now-band,.now-card.green .now-dot{color:var(--green)}
+  .now-card.amber .now-band,.now-card.amber .now-dot{color:var(--amber)}
+  .now-card.red   .now-band,.now-card.red   .now-dot{color:var(--red)}
+  .now-price{font-size:112px;font-weight:800;line-height:1;letter-spacing:-0.04em;font-variant-numeric:tabular-nums}
+  .now-price .unit{font-size:28px;font-weight:500;color:var(--text-dim);margin-left:6px;letter-spacing:0}
+  .now-context{font-size:18px;color:var(--text-dim);margin-top:14px;line-height:1.5}
+  .now-context .delta{font-weight:700}
+  .now-context .delta.below{color:var(--green)}
+  .now-context .delta.above{color:var(--red)}
+  .now-side{text-align:right;min-width:280px}
+  .charging-pill{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;
+    background:rgba(34,211,238,0.12);color:var(--cyan);border:1px solid rgba(34,211,238,0.35);
+    font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:14px}
+  .charging-pill.on{background:rgba(30,229,96,0.12);color:var(--green);border-color:rgba(30,229,96,0.4)}
+  .charging-pill.off{background:rgba(255,58,90,0.12);color:var(--red);border-color:rgba(255,58,90,0.4)}
+  .next-band{font-size:16px;color:var(--text-dim);line-height:1.6}
+  .next-band b{color:var(--text);font-weight:600}
+</content>
 
-h2 { margin:36px 0 14px; }
+  /* FREE ELECTRICITY BANNER */
+  .free-banner{margin:0 0 36px;padding:22px 32px;border-radius:22px;
+    background:linear-gradient(120deg,#0a6fff 0%,#00d4ff 100%);
+    box-shadow:0 0 40px rgba(0,212,255,0.35),inset 0 1px 0 rgba(255,255,255,0.2);
+    display:flex;align-items:center;gap:24px}
+  .free-icon{font-size:40px}
+  .free-title{font-size:22px;font-weight:800;letter-spacing:0.1em}
+  .free-time{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
 
-.band-card {
-  width:92%;
-  margin:14px auto;
-  padding:26px;
-  border-radius:18px;
-  font-size:26px;
-  box-shadow:0 0 25px rgba(0,0,0,0.45);
-}
+  /* SECTION HEADINGS */
+  .section-heading{font-size:14px;letter-spacing:0.28em;color:var(--text-dim);
+    text-transform:uppercase;font-weight:700;margin:36px 0 16px;display:flex;align-items:center;gap:14px}
+  .section-heading::after{content:'';flex:1;height:1px;background:var(--border)}
 
-.band-card.current {
-  outline:3px solid #fff;
-}
+  /* BAND CARDS */
+  .bands{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+  .band{position:relative;background:var(--surface);border:1px solid var(--border);
+    border-radius:18px;padding:18px 20px;transition:transform 0.2s,box-shadow 0.2s}
+  .band.current{transform:translateY(-2px)}
+  .band.current.green{box-shadow:0 0 32px rgba(30,229,96,0.25),inset 0 0 0 1px var(--green)}
+  .band.current.amber{box-shadow:0 0 32px rgba(255,176,32,0.25),inset 0 0 0 1px var(--amber)}
+  .band.current.red  {box-shadow:0 0 32px rgba(255,58,90,0.25),inset 0 0 0 1px var(--red)}
+  .band-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .band-name{font-size:12px;letter-spacing:0.16em;text-transform:uppercase;font-weight:700;
+    display:flex;align-items:center;gap:8px}
+  .band.green .band-name{color:var(--green)}
+  .band.amber .band-name{color:var(--amber)}
+  .band.red   .band-name{color:var(--red)}
+  .band-name::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
+  .band-now{font-size:10px;padding:3px 8px;border-radius:999px;background:var(--cyan);color:var(--bg);font-weight:800;letter-spacing:0.12em}
+  .band-price{font-size:38px;font-weight:800;line-height:1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+  .band-price .unit{font-size:14px;color:var(--text-dim);margin-left:4px;font-weight:500}
+  .band-pending{font-size:16px;color:var(--text-very-dim);font-style:italic;font-weight:500}
+  .band-time{font-size:13px;color:var(--text-dim);margin-top:8px;font-variant-numeric:tabular-nums}
+  .band-delta{font-size:12px;margin-top:6px;color:var(--text-dim)}
+  .band-delta .below{color:var(--green);font-weight:600}
+  .band-delta .above{color:var(--red);font-weight:600}
+  .band.pending{opacity:0.45;border-style:dashed}
+</content>
 
-.green { background:#1f8f2e; }
-.amber { background:#c9a200; }
-.red   { background:#b00000; }
+  /* THRESHOLD PANEL */
+  .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
+    border-radius:22px;padding:32px 36px}
+  .threshold-head{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:22px}
+  .threshold-title{font-size:14px;letter-spacing:0.22em;text-transform:uppercase;color:var(--text-dim);font-weight:700}
+  .threshold-current{display:flex;align-items:baseline;gap:8px}
+  .threshold-current .label{color:var(--text-dim);font-size:14px;text-transform:uppercase;letter-spacing:0.18em}
+  .threshold-current .value{font-size:44px;font-weight:800;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:var(--cyan)}
+  .threshold-current .unit{color:var(--text-dim);font-size:16px}
+  .threshold-controls{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+  .threshold-input{flex:1;min-width:200px;padding:16px 20px;font-size:22px;font-weight:600;
+    background:var(--surface-2);color:var(--text);border:1px solid var(--border);
+    border-radius:14px;font-variant-numeric:tabular-nums;text-align:center}
+  .threshold-input::placeholder{color:var(--text-very-dim);font-weight:400}
+  .threshold-input:focus{outline:2px solid var(--cyan);outline-offset:1px}
+  .threshold-save{padding:16px 36px;font-size:16px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    background:var(--cyan);color:var(--bg);border:none;border-radius:14px;cursor:pointer}
+  .threshold-save:hover{filter:brightness(1.08)}
+  .threshold-save:active{transform:translateY(1px)}
+  .threshold-status{margin-top:14px;font-size:14px;color:var(--text-dim);min-height:18px}
+  .threshold-status.ok{color:var(--green)}
+  .threshold-status.err{color:var(--red)}
 
-.greyed {
-  opacity:0.35;
-  border:2px dashed #666;
-}
+  .footer{margin:56px 0 24px;color:var(--text-very-dim);font-size:12px;text-align:center}
 
-.dot {
-  height:16px;
-  width:16px;
-  border-radius:50%;
-  display:inline-block;
-  margin-right:10px;
-}
-
-.dot.green { background:#58d46d; }
-.dot.amber { background:#ffd84a; }
-.dot.red { background:#ff4c4c; }
-
-.price { font-size:34px; font-weight:600; margin:6px 0; }
-
-footer {
-  margin:50px 0 30px;
-  color:#666;
-  font-size:14px;
-} 
-.free-card {
-  width:92%;
-  margin:36px auto 44px;
-  padding:44px 40px;
-  border-radius:26px;
-  font-size:36px;
-
-  background:linear-gradient(
-    135deg,
-    #0a8cff 0%,
-    #0072d6 45%,
-    #005bb5 100%
-  );
-
-  box-shadow:
-    0 0 28px rgba(0,124,255,0.55),
-    0 0 60px rgba(0,124,255,0.35);
-}
-
-.free-card .title {
-  font-weight:900;
-  font-size:40px;
-  letter-spacing:1.6px;
-  margin-bottom:10px;
-}
-
-.free-card .time {
-  margin-top:6px;
-  font-size:30px;
-  opacity:0.95;
-}
-  
-}
+  @media (max-width:720px){
+    .container{padding:18px}
+    .now-card{padding:28px 24px}
+    .now-price{font-size:80px}
+    .now-grid{grid-template-columns:1fr}
+    .now-side{text-align:left;min-width:0}
+    .threshold-current .value{font-size:36px}
+    .header{flex-direction:column;align-items:flex-start;gap:8px}
+    .clock{text-align:left}
+  }
 </style>
 </head>
-
 <body>
+<div class="container">
+  <header class="header">
+    <div class="location"><strong>EDF FreePhase Dynamic</strong> — ST15 0WL</div>
+    <div class="clock" id="clock"><span class="time">--:--:--</span><span class="date">—</span></div>
+  </header>
+</content>
 
-<header>
-<h1>EDF FreePhase Dynamic - ST15 0WL</h1>
-<div class="clock" id="clock"></div>
-</header>
+  <section id="now-card" class="now-card green">
+    <div class="now-grid">
+      <div class="now-main">
+        <div class="now-label">Right Now</div>
+        <div class="now-band"><span class="now-dot"></span><span id="now-band-name">—</span></div>
+        <div class="now-price"><span id="now-price">—</span><span class="unit">p / kWh</span></div>
+        <div class="now-context" id="now-context">—</div>
+      </div>
+      <div class="now-side">
+        <div class="charging-pill" id="charging-pill">Charging —</div>
+        <div class="next-band" id="next-band">—</div>
+      </div>
+    </div>
+  </section>
 
-<div id="free-electricity"></div>
+  <div id="free-electricity"></div>
 
-<h2>Today</h2>
-<div id="today-green-morning"></div>
-<div id="today-amber"></div>
-<div id="today-red"></div>
-<div id="today-green-late"></div>
+  <div class="section-heading">Today</div>
+  <div class="bands">
+    <div id="today-green-morning"></div>
+    <div id="today-amber"></div>
+    <div id="today-red"></div>
+    <div id="today-green-late"></div>
+  </div>
 
-<h2>Tomorrow</h2>
-<div id="tomorrow-green-morning"></div>
-<div id="tomorrow-amber"></div>
-<div id="tomorrow-red"></div>
+  <div class="section-heading">Tomorrow</div>
+  <div class="bands">
+    <div id="tomorrow-green-morning"></div>
+    <div id="tomorrow-amber"></div>
+    <div id="tomorrow-red"></div>
+  </div>
 
-<hr style="margin:60px 0;opacity:0.25">
+  <section class="threshold-panel">
+    <div class="threshold-head">
+      <div class="threshold-title">Charging Threshold</div>
+      <div class="threshold-current">
+        <span class="label">Currently</span>
+        <span class="value" id="current-threshold">—</span>
+        <span class="unit">p / kWh</span>
+      </div>
+    </div>
+    <div class="threshold-controls">
+      <input id="new-threshold" type="number" step="0.01" class="threshold-input" placeholder="Enter new threshold (p / kWh)">
+      <button class="threshold-save" onclick="updateThreshold()">Save</button>
+    </div>
+    <div id="threshold-status" class="threshold-status"></div>
+  </section>
 
-<h2>Set Charging Price Threshold</h2>
-<p>Current threshold:</p>
-<h2 id="current-threshold">Loading…</h2>
-
-<input id="new-threshold" type="number" placeholder="Enter new threshold"
-style="font-size:24px;padding:14px;width:260px;text-align:center;
-border-radius:12px;border:2px solid #444;background:#222;color:#fff">
-
-<br><br>
-<button onclick="updateThreshold()"
-style="padding:14px 28px;font-size:20px;border-radius:12px">Save</button>
-
-<div id="threshold-status" style="margin-top:16px"></div>
-
-<footer>
-EDF FreePhase Display by Matt Lewis • Auto updated hourly via GitHub Actions
-</footer>
+  <footer class="footer">
+    EDF FreePhase Display by Matt Lewis · Auto-refreshes every minute
+  </footer>
+</div>
+</content>
 
 <script>
 const BASELINE = 25.65;
-
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
-async function loadFreeElectricity() {
-  const el = document.getElementById("free-electricity")
+// Local-time windows; each maps to a band card + the data.json field that supplies its price
+const WINDOWS = [
+  { start:    1, end:  360, key: "today-green-morning", band: "green", source: ["today","green"],    label: "00:01 - 06:00" },
+  { start:  360, end:  960, key: "today-amber",         band: "amber", source: ["today","amber"],    label: "06:00 - 16:00 & 19:00 - 23:00" },
+  { start:  960, end: 1140, key: "today-red",           band: "red",   source: ["today","red"],      label: "16:00 - 19:00" },
+  { start: 1140, end: 1380, key: "today-amber",         band: "amber", source: ["today","amber"],    label: "06:00 - 16:00 & 19:00 - 23:00" },
+  { start: 1380, end: 1440, key: "today-green-late",    band: "green", source: ["tomorrow","green"], label: "23:00 - 00:00" },
+];
 
-  try {
-    const res = await fetch(
-      "https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/"
-    )
-    const data = await res.json()
+let currentThreshold = null;
+let lastData = null;
 
-    const todayKey = new Date().toISOString().slice(0,10)
+function pad(n){ return String(n).padStart(2,"0"); }
 
-    const freeSlots = data.results
-      .filter(r =>
-        r.value_inc_vat === 0 &&
-        r.valid_from.startsWith(todayKey)
-      )
-      .sort((a,b) => new Date(a.valid_from) - new Date(b.valid_from))
+function updateClock(){
+  const now = new Date();
+  const t = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const d = now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
+  document.getElementById("clock").innerHTML = `<span class="time">${t}</span><span class="date">${d}</span>`;
+}
+setInterval(updateClock,1000); updateClock();
 
-    if (!freeSlots.length) return
-
-    const start = new Date(freeSlots[0].valid_from)
-    const end = new Date(freeSlots[freeSlots.length - 1].valid_to)
-
-    const fmt = d => d.toLocaleTimeString("en-GB", {
-      hour:"2-digit",
-      minute:"2-digit"
-    })
-
-    el.innerHTML = `
-      <div class="free-card">
-        <div class="title">⚡ FREE ELECTRICITY TODAY ⚡</div>
-        <div class="time">${fmt(start)} – ${fmt(end)}</div>
-        </div>
-    `
-  } catch (e) {
-    console.error("Free electricity fetch failed", e)
-  }
+function getSourcePrice(data, source){
+  return data?.[source[0]]?.[source[1]]?.price ?? null;
 }
 
-function updateClock() {
-  document.getElementById("clock").textContent =
-    new Date().toLocaleString("en-GB");
-}
-setInterval(updateClock, 1000);
-updateClock();
+function minutesNow(){ const n=new Date(); return n.getHours()*60 + n.getMinutes(); }
 
-function pctText(price) {
-  const p = ((BASELINE - price) / BASELINE) * 100;
-  const dir = p >= 0 ? "▼" : "▲";
-  return `${dir} ${Math.abs(p).toFixed(0)} percent ${p >= 0 ? "below" : "above"} baseline`;
+function currentWindow(){
+  const m = minutesNow();
+  return WINDOWS.find(w => m >= w.start && m < w.end) || WINDOWS[WINDOWS.length-1];
 }
 
-function buildCard(id, band, price, time) {
-  const el = document.getElementById(id);
+function timeUntil(targetMin){
+  const m = minutesNow();
+  let diff = targetMin - m;
+  if (diff <= 0) diff += 1440;
+  const h = Math.floor(diff/60), mins = diff % 60;
+  return h > 0 ? `${h}h ${mins}m` : `${mins}m`;
+}
+
+function pctMarkup(price){
+  if (price == null) return "";
+  const pct = ((BASELINE - price) / BASELINE) * 100;
+  const cls = pct >= 0 ? "below" : "above";
+  const arrow = pct >= 0 ? "▼" : "▲";
+  return `<span class="${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"}</span>`;
+}
+</content>
+
+function buildBand(elId, band, price, time, isCurrent){
+  const el = document.getElementById(elId);
   const pending = price == null;
-
+  el.className = `band ${band} ${isCurrent?"current":""} ${pending?"pending":""}`;
   el.innerHTML = `
-    <div class="band-card ${band} ${pending ? "greyed" : ""}" id="${id}-card">
-      <div><span class="dot ${band}"></span>${band.toUpperCase()}</div>
-      ${pending
-        ? `<div class="price">Price not yet published</div>`
-        : `<div class="price">${price.toFixed(2)}p per kWh</div>`}
-      <div>${time}</div>
-      ${pending ? `<div>Awaiting publication</div>` : `<div>${pctText(price)}</div>`}
+    <div class="band-head">
+      <div class="band-name">${band.toUpperCase()}</div>
+      ${isCurrent ? `<div class="band-now">NOW</div>` : ""}
     </div>
+    ${pending
+      ? `<div class="band-pending">Awaiting publication</div>`
+      : `<div class="band-price">${price.toFixed(2)}<span class="unit">p / kWh</span></div>`}
+    <div class="band-time">${time}</div>
+    ${pending ? "" : `<div class="band-delta">${pctMarkup(price)} vs ${BASELINE.toFixed(2)}p baseline</div>`}
   `;
 }
 
-function highlightCurrent() {
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
+function renderNow(data){
+  const w = currentWindow();
+  const price = getSourcePrice(data, w.source);
+  const nowCard = document.getElementById("now-card");
+  nowCard.className = `now-card ${w.band}`;
+  document.getElementById("now-band-name").textContent = w.band.toUpperCase();
 
-  if (mins >= 1 && mins < 360) {
-    mark("today-green-morning");
+  if (price == null){
+    document.getElementById("now-price").textContent = "—";
+    document.getElementById("now-context").textContent = "Awaiting publication";
+  } else {
+    document.getElementById("now-price").textContent = price.toFixed(2);
+    const pct = ((BASELINE - price) / BASELINE) * 100;
+    const cls = pct >= 0 ? "below" : "above";
+    const arrow = pct >= 0 ? "▼" : "▲";
+    document.getElementById("now-context").innerHTML =
+      `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"} baseline</span> (${BASELINE.toFixed(2)}p)`;
   }
-  else if (mins >= 360 && mins < 960) {
-    mark("today-amber");
-  }
-  else if (mins >= 960 && mins < 1140) {
-    mark("today-red");
-  }
-  else if (mins >= 1140 && mins < 1380) {
-    mark("today-amber");
-  }
-  else {
-    mark("today-green-late");
+
+  const idx = WINDOWS.indexOf(w);
+  const next = WINDOWS[(idx + 1) % WINDOWS.length];
+  const nextPrice = getSourcePrice(data, next.source);
+  const eta = timeUntil(next.start);
+  let nextHtml = `<b>${next.band.toUpperCase()}</b>`;
+  if (nextPrice != null) nextHtml += ` at <b>${nextPrice.toFixed(2)}p</b>`;
+  nextHtml += ` in <b>${eta}</b>`;
+  document.getElementById("next-band").innerHTML = `Next: ${nextHtml}`;
+
+  const pill = document.getElementById("charging-pill");
+  if (currentThreshold == null || price == null){
+    pill.className = "charging-pill"; pill.textContent = "Charging —";
+  } else if (price <= currentThreshold){
+    pill.className = "charging-pill on"; pill.textContent = `Charging ON · ≤ ${currentThreshold.toFixed(2)}p`;
+  } else {
+    pill.className = "charging-pill off"; pill.textContent = `Paused · > ${currentThreshold.toFixed(2)}p`;
   }
 }
 
-function mark(id) {
-  const el = document.getElementById(id + "-card");
-  if (el) el.classList.add("current");
+function renderBands(data){
+  const w = currentWindow();
+  buildBand("today-green-morning","green", data?.today?.green?.price ?? null,    "00:01 - 06:00", w.key==="today-green-morning");
+  buildBand("today-amber",        "amber", data?.today?.amber?.price ?? null,    "06:00 - 16:00 & 19:00 - 23:00", w.key==="today-amber");
+  buildBand("today-red",          "red",   data?.today?.red?.price ?? null,      "16:00 - 19:00", w.key==="today-red");
+  buildBand("today-green-late",   "green", data?.tomorrow?.green?.price ?? null, "23:00 - 00:00", w.key==="today-green-late");
+  buildBand("tomorrow-green-morning","green", data?.tomorrow?.green?.price ?? null, "00:01 - 06:00", false);
+  buildBand("tomorrow-amber",     "amber", data?.tomorrow?.amber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00", false);
+  buildBand("tomorrow-red",       "red",   data?.tomorrow?.red?.price ?? null,   "16:00 - 19:00", false);
+}
+</content>
+
+async function loadFreeElectricity(){
+  const el = document.getElementById("free-electricity");
+  try {
+    const res = await fetch("https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/");
+    const data = await res.json();
+    const todayKey = new Date().toISOString().slice(0,10);
+    const freeSlots = (data.results || [])
+      .filter(r => r.value_inc_vat === 0 && r.valid_from.startsWith(todayKey))
+      .sort((a,b) => new Date(a.valid_from) - new Date(b.valid_from));
+    if (!freeSlots.length){ el.innerHTML = ""; return; }
+    const fmt = d => new Date(d).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    el.innerHTML = `
+      <div class="free-banner">
+        <div class="free-icon">⚡</div>
+        <div>
+          <div class="free-title">FREE ELECTRICITY TODAY</div>
+          <div class="free-time">${fmt(freeSlots[0].valid_from)} – ${fmt(freeSlots[freeSlots.length-1].valid_to)}</div>
+        </div>
+      </div>`;
+  } catch(e){ console.error("Free electricity fetch failed", e); }
 }
 
-function dayKey(d) {
-  return d.toISOString().slice(0,10);
-}
-
-fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(), {
-  cache: "no-store"
-})
-.then(r => r.json())
-.then(data => {
-  // JSON is already structured as { today: { green, amber, red }, tomorrow: { green, amber, red } }
-
-  const todayGreenMorning = data.today?.green ?? null;      // 23:00 yesterday to 06:00 today
-  const todayAmber = data.today?.amber ?? null;             // 06:00 to 16:00 today (your workflow) 
-  const todayRed = data.today?.red ?? null;                 // 16:00 to 19:00 today
-
-  // IMPORTANT: tonight 23:00 to 00:00 is the start of TOMORROW.green in your JSON
-  const tonightGreen = data.tomorrow?.green ?? null;        // 23:00 today to 06:00 tomorrow
-
-  const tomorrowGreenMorning = data.tomorrow?.green ?? null; // 00:01 to 06:00 tomorrow (same price as tonightGreen)
-  const tomorrowAmber = data.tomorrow?.amber ?? null;
-  const tomorrowRed = data.tomorrow?.red ?? null;
-
-  buildCard("today-green-morning", "green", todayGreenMorning?.price ?? null, "00:01 - 06:00");
-  buildCard("today-amber", "amber", todayAmber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("today-red", "red", todayRed?.price ?? null, "16:00 - 19:00");
-  buildCard("today-green-late", "green", tonightGreen?.price ?? null, "23:00 - 00:00");
-
-  buildCard("tomorrow-green-morning", "green", tomorrowGreenMorning?.price ?? null, "00:01 - 06:00");
-  buildCard("tomorrow-amber", "amber", tomorrowAmber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00");
-  buildCard("tomorrow-red", "red", tomorrowRed?.price ?? null, "16:00 - 19:00");
-
-  highlightCurrent();
-})
-
-async function loadThreshold() {
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
-    { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } }
-  );
-  const data = await res.json();
-  document.getElementById("current-threshold").innerText =
-    data.length ? data[0].value : "Not set";
+async function loadThreshold(){
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
+      { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } });
+    const data = await res.json();
+    currentThreshold = data.length ? parseFloat(data[0].value) : null;
+  } catch(e){ console.error(e); currentThreshold = null; }
+  document.getElementById("current-threshold").textContent = currentThreshold != null ? currentThreshold.toFixed(2) : "—";
   document.getElementById("new-threshold").value = "";
+  if (lastData) renderNow(lastData);
 }
 
-async function updateThreshold() {
-  const v = document.getElementById("new-threshold").value;
-  if (!v) return;
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`,
-    {
-      method:"PATCH",
-      headers:{
-        "Content-Type":"application/json",
-        apikey:SUPABASE_KEY,
-        Authorization:`Bearer ${SUPABASE_KEY}`,
-        Prefer:"return=representation"
+async function updateThreshold(){
+  const raw = document.getElementById("new-threshold").value;
+  if (!raw){ return; }
+  const status = document.getElementById("threshold-status");
+  status.className = "threshold-status"; status.textContent = "Saving…";
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Prefer: "return=representation"
       },
-      body:JSON.stringify({ value:v })
+      body: JSON.stringify({ value: raw })
+    });
+    if (res.ok){
+      currentThreshold = parseFloat(raw);
+      document.getElementById("current-threshold").textContent = currentThreshold.toFixed(2);
+      document.getElementById("new-threshold").value = "";
+      status.className = "threshold-status ok"; status.textContent = `Saved · threshold set to ${currentThreshold.toFixed(2)}p`;
+      if (lastData) renderNow(lastData);
+    } else {
+      status.className = "threshold-status err"; status.textContent = `Save failed (HTTP ${res.status})`;
     }
-  );
-
-  document.getElementById("threshold-status").innerText =
-    res.ok ? "Saved" : "Error saving value";
-
-  loadThreshold();
+  } catch(e){
+    status.className = "threshold-status err"; status.textContent = "Network error: " + e.message;
+  }
 }
-  
-loadFreeElectricity()
-loadThreshold();
-</script>
 
+function fetchData(){
+  return fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(),
+    { cache: "no-store" })
+    .then(r => r.json())
+    .then(data => { lastData = data; renderNow(data); renderBands(data); })
+    .catch(e => console.error("data.json fetch failed", e));
+}
+
+async function init(){
+  await loadThreshold();
+  await fetchData();
+  loadFreeElectricity();
+  setInterval(fetchData, 60_000);            // refresh bands every minute
+  setInterval(loadThreshold, 5*60_000);      // refresh threshold every 5 min
+  setInterval(loadFreeElectricity, 60*60_000); // refresh free check hourly
+}
+init();
+</script>
 </body>
 </html>
+</content>
