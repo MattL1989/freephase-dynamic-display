@@ -581,13 +581,23 @@ async function loadLiveState(){
     document.getElementById("tuya-amps").textContent   = fmtNum(current_a, 1);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
 
-    // Update the green-force toggle to reflect the latest known Pi-side value
-    if (state.green_force != null){
-      currentGreenForce = state.green_force;
-      const cb = document.getElementById("green-force-toggle");
-      if (cb && document.activeElement !== cb) cb.checked = !!currentGreenForce;
-    }
+    // NB: state.green_force comes from the Pi's last cycle so it lags writes.
+    // We deliberately don't reconcile the toggle here - loadGreenForce() reads
+    // straight from Supabase on a tighter schedule, which is the source of truth.
   } catch(e){ console.error("live state fetch failed", e); }
+}
+
+async function loadGreenForce(){
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.green_force&select=value`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" });
+    const rows = await r.json();
+    if (!rows.length) return;
+    const v = String(rows[0].value).trim().toLowerCase();
+    currentGreenForce = (v === "true" || v === "1" || v === "yes" || v === "on");
+    const cb = document.getElementById("green-force-toggle");
+    if (cb && document.activeElement !== cb) cb.checked = !!currentGreenForce;
+  } catch(e){ console.error("green_force fetch failed", e); }
 }
 
 async function updateGreenForce(checked){
@@ -625,11 +635,13 @@ async function updateGreenForce(checked){
 
 async function init(){
   await loadThreshold();
+  await loadGreenForce();
   await fetchData();
   loadFreeElectricity();
   loadLiveState();
   setInterval(fetchData, 60_000);              // refresh bands every minute
-  setInterval(loadThreshold, 5*60_000);        // refresh threshold every 5 min
+  setInterval(loadThreshold, 30_000);          // refresh threshold every 30s
+  setInterval(loadGreenForce, 30_000);         // refresh green-force toggle every 30s
   setInterval(loadFreeElectricity, 60*60_000); // refresh free check hourly
   setInterval(loadLiveState, 15_000);          // refresh live charging state every 15s
 }
