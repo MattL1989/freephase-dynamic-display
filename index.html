@@ -123,15 +123,11 @@
   .metric-value.big{font-size:42px}
   .metric-value .unit{font-size:14px;color:var(--text-dim);margin-left:4px;font-weight:500}
   .metric-sub{font-size:12px;color:var(--text-dim);margin-top:6px;font-variant-numeric:tabular-nums}
-  .breaker-row{margin-top:18px;display:flex;align-items:center;justify-content:space-between;
-    background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:14px 20px;flex-wrap:wrap;gap:8px}
-  .breaker-label{font-size:11px;letter-spacing:0.18em;color:var(--text-very-dim);text-transform:uppercase;font-weight:600}
-  .breaker-status{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:0.06em;text-transform:uppercase}
-  .breaker-status::before{content:'';width:10px;height:10px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
-  .breaker-status.on{color:var(--green)}
-  .breaker-status.off{color:var(--text-very-dim)}
-  .breaker-status.off::before{box-shadow:none}
-  .breaker-kwh{font-size:13px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+  .charge-section{margin-top:24px}
+  .charge-section:first-of-type{margin-top:0}
+  .charge-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .charge-section-title{font-size:18px;font-weight:700;letter-spacing:0.02em;color:var(--text)}
+  .charge-cap{font-size:13px;color:var(--text-dim);font-weight:500;margin-left:6px;letter-spacing:0}
 
 /* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
@@ -210,38 +206,63 @@
 
   <section class="charge-panel" id="charge-panel">
     <div class="charge-head">
-      <div>
-        <div class="charge-title">Charging</div>
-        <div id="charge-mode" class="charge-mode-pill disconnected" style="margin-top:10px">Loading…</div>
-      </div>
+      <div class="charge-title">Charging</div>
       <div class="charge-updated" id="charge-updated">—</div>
     </div>
-    <div class="charge-grid">
-      <div class="charge-metric">
-        <div class="metric-label">Live Power</div>
-        <div class="metric-value big"><span id="live-kw">—</span><span class="unit">kW</span></div>
-        <div class="metric-sub"><span id="live-volts">— V</span></div>
+
+    <!-- EASEE 7 kW -->
+    <div class="charge-section">
+      <div class="charge-section-head">
+        <div class="charge-section-title">Easee <span class="charge-cap">7 kW smart charger</span></div>
+        <div id="charge-mode" class="charge-mode-pill disconnected">Loading…</div>
       </div>
-      <div class="charge-metric">
-        <div class="metric-label">Current</div>
-        <div class="metric-value big"><span id="live-amps">—</span><span class="unit">A</span></div>
-        <div class="metric-sub" id="live-amps-detail">—</div>
-      </div>
-      <div class="charge-metric">
-        <div class="metric-label">Session</div>
-        <div class="metric-value"><span id="live-session">—</span><span class="unit">kWh</span></div>
-        <div class="metric-sub">since plug-in</div>
-      </div>
-      <div class="charge-metric">
-        <div class="metric-label">Lifetime</div>
-        <div class="metric-value"><span id="live-lifetime">—</span><span class="unit">kWh</span></div>
-        <div class="metric-sub">Easee total</div>
+      <div class="charge-grid">
+        <div class="charge-metric">
+          <div class="metric-label">Live Power</div>
+          <div class="metric-value big"><span id="live-kw">—</span><span class="unit">kW</span></div>
+          <div class="metric-sub"><span id="live-volts">— V</span></div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Current</div>
+          <div class="metric-value big"><span id="live-amps">—</span><span class="unit">A</span></div>
+          <div class="metric-sub" id="live-amps-detail">—</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Session</div>
+          <div class="metric-value"><span id="live-session">—</span><span class="unit">kWh</span></div>
+          <div class="metric-sub">since plug-in</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Lifetime</div>
+          <div class="metric-value"><span id="live-lifetime">—</span><span class="unit">kWh</span></div>
+          <div class="metric-sub">Easee total</div>
+        </div>
       </div>
     </div>
-    <div class="breaker-row">
-      <span class="breaker-label">Tuya Breaker</span>
-      <span class="breaker-status off" id="breaker-status">—</span>
-      <span class="breaker-kwh" id="breaker-kwh">—</span>
+
+    <!-- TUYA 3.7 kW BREAKER -->
+    <div class="charge-section">
+      <div class="charge-section-head">
+        <div class="charge-section-title">Tuya Breaker <span class="charge-cap">3.7 kW upstream relay</span></div>
+        <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
+      </div>
+      <div class="charge-grid">
+        <div class="charge-metric">
+          <div class="metric-label">Live Power</div>
+          <div class="metric-value big"><span id="tuya-kw">—</span><span class="unit">kW</span></div>
+          <div class="metric-sub"><span id="tuya-volts">— V</span></div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Current</div>
+          <div class="metric-value big"><span id="tuya-amps">—</span><span class="unit">A</span></div>
+          <div class="metric-sub">through the breaker</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Lifetime</div>
+          <div class="metric-value"><span id="tuya-lifetime">—</span><span class="unit">kWh</span></div>
+          <div class="metric-sub">Tuya total</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -504,13 +525,21 @@ async function loadLiveState(){
     document.getElementById("live-session").textContent = fmtNum(easee.session_kwh, 2);
     document.getElementById("live-lifetime").textContent = fmtNum(easee.lifetime_kwh, 1);
 
-    // Breaker
-    const bs = document.getElementById("breaker-status");
-    if (tuya.switch_on === true){ bs.className = "breaker-status on"; bs.textContent = "ON"; }
-    else if (tuya.switch_on === false){ bs.className = "breaker-status off"; bs.textContent = "OFF"; }
-    else { bs.className = "breaker-status off"; bs.textContent = tuya.online ? "—" : "OFFLINE"; }
-    document.getElementById("breaker-kwh").textContent =
-      tuya.total_kwh != null ? fmtNum(tuya.total_kwh, 2) + " kWh through it" : "—";
+    // Tuya breaker section
+    const bm = document.getElementById("breaker-mode");
+    if (tuya.online === false){
+      bm.className = "charge-mode-pill disconnected"; bm.textContent = "OFFLINE";
+    } else if (tuya.switch_on === true){
+      bm.className = "charge-mode-pill charging"; bm.textContent = "ON";
+    } else if (tuya.switch_on === false){
+      bm.className = "charge-mode-pill disconnected"; bm.textContent = "OFF";
+    } else {
+      bm.className = "charge-mode-pill disconnected"; bm.textContent = "—";
+    }
+    document.getElementById("tuya-kw").textContent = fmtNum(tuya.power_kw, 2);
+    document.getElementById("tuya-volts").textContent = fmtNum(tuya.voltage, 1) + " V";
+    document.getElementById("tuya-amps").textContent = fmtNum(tuya.current_a, 1);
+    document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
   } catch(e){ console.error("live state fetch failed", e); }
 }
 
