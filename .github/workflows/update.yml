@@ -54,12 +54,21 @@ jobs:
           PERIOD_FROM="$(to_utc "$YESTERDAY 00:00")"
           PERIOD_TO="$(to_utc "$DAY_AFTER 23:59")"
 
-          curl -s "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" > raw.json
-
-          # Gracefully allow empty EDF windows
+          # Fetch with retries; abort the step (preserving existing data.json on main) if EDF is still unhealthy
+          HTTP=$(curl -s -o raw.json -w '%{http_code}' --retry 5 --retry-delay 6 --retry-all-errors --max-time 30 "${API}?period_from=${PERIOD_FROM}&period_to=${PERIOD_TO}" || echo 000)
+          echo "EDF HTTP ${HTTP}"
+          if [ "${HTTP}" != "200" ]; then
+            echo "EDF returned HTTP ${HTTP}; preserving existing data.json and aborting step"
+            exit 1
+          fi
           if ! jq -e '.results' raw.json >/dev/null 2>&1; then
-            echo '{"today":{"green":null,"amber":null,"red":null},"tomorrow":{"green":null,"amber":null,"red":null}}' > data.json
-            exit 0
+            echo "EDF response had no .results field; preserving existing data.json and aborting step"
+            head -c 400 raw.json
+            exit 1
+          fi
+          if [ "$(jq '.results | length' raw.json)" -eq 0 ]; then
+            echo "EDF returned 0 results; preserving existing data.json and aborting step"
+            exit 1
           fi
 
           # Average all half-hourly slots in one window, or in the union of two windows
