@@ -536,9 +536,12 @@ async function loadLiveState(){
     } else {
       bm.className = "charge-mode-pill disconnected"; bm.textContent = "—";
     }
-    document.getElementById("tuya-kw").textContent = fmtNum(tuya.power_kw, 2);
-    document.getElementById("tuya-volts").textContent = fmtNum(tuya.voltage, 1) + " V";
-    document.getElementById("tuya-amps").textContent = fmtNum(tuya.current_a, 1);
+    // The 1P breaker only emits phase_a (V/A/kW) when there's measurable current flowing.
+    // If switch is ON but those fields are null, the breaker is idle — show 0 rather than "—".
+    const breakerIdle = (tuya.switch_on === true) && (tuya.power_kw == null);
+    document.getElementById("tuya-kw").textContent = breakerIdle ? "0.00" : fmtNum(tuya.power_kw, 2);
+    document.getElementById("tuya-volts").textContent = (tuya.voltage != null ? fmtNum(tuya.voltage, 1) : "—") + " V";
+    document.getElementById("tuya-amps").textContent = breakerIdle ? "0.0" : fmtNum(tuya.current_a, 1);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
   } catch(e){ console.error("live state fetch failed", e); }
 }
