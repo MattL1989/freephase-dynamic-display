@@ -152,6 +152,24 @@
   .threshold-status.ok{color:var(--green)}
   .threshold-status.err{color:var(--red)}
 
+  /* GREEN-FORCE TOGGLE */
+  .toggle-row{margin-top:24px;padding-top:24px;border-top:1px solid var(--border);
+    display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .toggle-text{flex:1;min-width:260px}
+  .toggle-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}
+  .toggle-help{font-size:13px;color:var(--text-dim);line-height:1.5}
+  .toggle-switch{position:relative;display:inline-block;width:60px;height:32px;flex-shrink:0;margin-top:4px}
+  .toggle-switch input{opacity:0;width:0;height:0}
+  .toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:999px;transition:.2s}
+  .toggle-slider::before{content:"";position:absolute;height:24px;width:24px;left:3px;top:3px;
+    background:var(--text-dim);border-radius:50%;transition:.2s}
+  .toggle-switch input:checked + .toggle-slider{background:rgba(30,229,96,0.18);border-color:rgba(30,229,96,0.5)}
+  .toggle-switch input:checked + .toggle-slider::before{transform:translateX(28px);background:var(--green);box-shadow:0 0 12px var(--green)}
+  .toggle-status{font-size:12px;color:var(--text-dim);margin-top:8px;width:100%;min-height:14px}
+  .toggle-status.ok{color:var(--green)}
+  .toggle-status.err{color:var(--red)}
+
   .footer{margin:56px 0 24px;color:var(--text-very-dim);font-size:12px;text-align:center}
 
   @media (max-width:720px){
@@ -280,6 +298,18 @@
       <button class="threshold-save" onclick="updateThreshold()">Save</button>
     </div>
     <div id="threshold-status" class="threshold-status"></div>
+
+    <div class="toggle-row">
+      <div class="toggle-text">
+        <div class="toggle-title">Auto-charge during green window</div>
+        <div class="toggle-help">When <b>ON</b>, charging starts overnight (23:00–06:00) whenever the green-band price is reasonable, even if it's above your threshold. When <b>OFF</b>, charging is purely threshold-driven — useful when tomorrow's amber is cheaper than tonight's green.</div>
+        <div id="green-force-status" class="toggle-status"></div>
+      </div>
+      <label class="toggle-switch" title="Auto-charge during green window">
+        <input type="checkbox" id="green-force-toggle" onchange="updateGreenForce(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
   </section>
 
   <footer class="footer">
@@ -301,7 +331,9 @@ const WINDOWS = [
 ];
 
 let currentThreshold = null;
+let currentGreenForce = null;        // null = unknown; bool when fetched
 let lastData = null;
+let lastTuyaVoltage = null;          // remember most recent voltage we saw so we don't dash out
 
 function pad(n){ return String(n).padStart(2,"0"); }
 
@@ -536,14 +568,59 @@ async function loadLiveState(){
     } else {
       bm.className = "charge-mode-pill disconnected"; bm.textContent = "—";
     }
-    // The 1P breaker only emits phase_a (V/A/kW) when there's measurable current flowing.
-    // If switch is ON but those fields are null, the breaker is idle — show 0 rather than "—".
-    const breakerIdle = (tuya.switch_on === true) && (tuya.power_kw == null);
-    document.getElementById("tuya-kw").textContent = breakerIdle ? "0.00" : fmtNum(tuya.power_kw, 2);
-    document.getElementById("tuya-volts").textContent = (tuya.voltage != null ? fmtNum(tuya.voltage, 1) : "—") + " V";
-    document.getElementById("tuya-amps").textContent = breakerIdle ? "0.0" : fmtNum(tuya.current_a, 1);
+    // The 1P breaker only emits phase_a (V/A/kW) when there's something to push.
+    // Strategy: when switch_on is true, treat missing V/A/kW as zero draw rather than "—",
+    // and remember the last voltage we saw so it persists through transient null frames.
+    if (tuya.voltage != null) lastTuyaVoltage = tuya.voltage;
+    const breakerOn = tuya.switch_on === true;
+    const power_kw  = (tuya.power_kw  != null) ? tuya.power_kw  : (breakerOn ? 0 : null);
+    const current_a = (tuya.current_a != null) ? tuya.current_a : (breakerOn ? 0 : null);
+    const voltage   = (tuya.voltage   != null) ? tuya.voltage   : (breakerOn ? lastTuyaVoltage : null);
+    document.getElementById("tuya-kw").textContent     = fmtNum(power_kw, 2);
+    document.getElementById("tuya-volts").textContent  = (voltage != null ? fmtNum(voltage, 1) : "—") + " V";
+    document.getElementById("tuya-amps").textContent   = fmtNum(current_a, 1);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
+
+    // Update the green-force toggle to reflect the latest known Pi-side value
+    if (state.green_force != null){
+      currentGreenForce = state.green_force;
+      const cb = document.getElementById("green-force-toggle");
+      if (cb && document.activeElement !== cb) cb.checked = !!currentGreenForce;
+    }
   } catch(e){ console.error("live state fetch failed", e); }
+}
+
+async function updateGreenForce(checked){
+  const status = document.getElementById("green-force-status");
+  status.className = "toggle-status";
+  status.textContent = "Saving…";
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.green_force`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({ value: checked ? "true" : "false" })
+    });
+    if (res.ok){
+      currentGreenForce = checked;
+      status.className = "toggle-status ok";
+      status.textContent = checked
+        ? "Saved · auto-charge during green window enabled"
+        : "Saved · green window will use threshold logic (Pi picks up within 2 min)";
+    } else {
+      status.className = "toggle-status err";
+      status.textContent = `Save failed (HTTP ${res.status})`;
+      document.getElementById("green-force-toggle").checked = !!currentGreenForce;
+    }
+  } catch(e){
+    status.className = "toggle-status err";
+    status.textContent = "Network error: " + e.message;
+    document.getElementById("green-force-toggle").checked = !!currentGreenForce;
+  }
 }
 
 async function init(){
