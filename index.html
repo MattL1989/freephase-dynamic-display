@@ -98,6 +98,41 @@
   .band-delta .below{color:var(--green);font-weight:600}
   .band-delta .above{color:var(--red);font-weight:600}
   .band.pending{opacity:0.45;border-style:dashed}
+
+  /* CHARGING PANEL */
+  .charge-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
+    border-radius:22px;padding:32px 36px}
+  .charge-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+  .charge-title{font-size:14px;letter-spacing:0.22em;text-transform:uppercase;color:var(--text-dim);font-weight:700}
+  .charge-updated{font-size:12px;color:var(--text-very-dim);font-variant-numeric:tabular-nums}
+  .charge-mode-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;
+    font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)}
+  .charge-mode-pill::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
+  .charge-mode-pill.disconnected{color:var(--text-dim)}
+  .charge-mode-pill.ready{color:var(--cyan);border-color:rgba(34,211,238,0.4)}
+  .charge-mode-pill.paused{color:var(--amber);border-color:rgba(255,176,32,0.4)}
+  .charge-mode-pill.charging{color:var(--green);border-color:rgba(30,229,96,0.4);animation:pulse 1.6s ease-in-out infinite}
+  .charge-mode-pill.completed{color:#7aa9ff;border-color:rgba(122,169,255,0.4)}
+  .charge-mode-pill.error{color:var(--red);border-color:rgba(255,58,90,0.4)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(30,229,96,0.5)}50%{box-shadow:0 0 0 8px rgba(30,229,96,0)}}
+  .charge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px}
+  .charge-metric{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+  .metric-label{font-size:11px;letter-spacing:0.18em;color:var(--text-very-dim);text-transform:uppercase;font-weight:600;margin-bottom:8px}
+  .metric-value{font-size:34px;font-weight:800;line-height:1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+  .metric-value.big{font-size:42px}
+  .metric-value .unit{font-size:14px;color:var(--text-dim);margin-left:4px;font-weight:500}
+  .metric-sub{font-size:12px;color:var(--text-dim);margin-top:6px;font-variant-numeric:tabular-nums}
+  .breaker-row{margin-top:18px;display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:14px 20px;flex-wrap:wrap;gap:8px}
+  .breaker-label{font-size:11px;letter-spacing:0.18em;color:var(--text-very-dim);text-transform:uppercase;font-weight:600}
+  .breaker-status{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:0.06em;text-transform:uppercase}
+  .breaker-status::before{content:'';width:10px;height:10px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
+  .breaker-status.on{color:var(--green)}
+  .breaker-status.off{color:var(--text-very-dim)}
+  .breaker-status.off::before{box-shadow:none}
+  .breaker-kwh{font-size:13px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+
 /* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
@@ -172,6 +207,43 @@
     <div id="tomorrow-amber"></div>
     <div id="tomorrow-red"></div>
   </div>
+
+  <section class="charge-panel" id="charge-panel">
+    <div class="charge-head">
+      <div>
+        <div class="charge-title">Charging</div>
+        <div id="charge-mode" class="charge-mode-pill disconnected" style="margin-top:10px">Loading…</div>
+      </div>
+      <div class="charge-updated" id="charge-updated">—</div>
+    </div>
+    <div class="charge-grid">
+      <div class="charge-metric">
+        <div class="metric-label">Live Power</div>
+        <div class="metric-value big"><span id="live-kw">—</span><span class="unit">kW</span></div>
+        <div class="metric-sub"><span id="live-volts">— V</span></div>
+      </div>
+      <div class="charge-metric">
+        <div class="metric-label">Current</div>
+        <div class="metric-value big"><span id="live-amps">—</span><span class="unit">A</span></div>
+        <div class="metric-sub" id="live-amps-detail">—</div>
+      </div>
+      <div class="charge-metric">
+        <div class="metric-label">Session</div>
+        <div class="metric-value"><span id="live-session">—</span><span class="unit">kWh</span></div>
+        <div class="metric-sub">since plug-in</div>
+      </div>
+      <div class="charge-metric">
+        <div class="metric-label">Lifetime</div>
+        <div class="metric-value"><span id="live-lifetime">—</span><span class="unit">kWh</span></div>
+        <div class="metric-sub">Easee total</div>
+      </div>
+    </div>
+    <div class="breaker-row">
+      <span class="breaker-label">Tuya Breaker</span>
+      <span class="breaker-status off" id="breaker-status">—</span>
+      <span class="breaker-kwh" id="breaker-kwh">—</span>
+    </div>
+  </section>
 
   <section class="threshold-panel">
     <div class="threshold-head">
@@ -383,13 +455,74 @@ function fetchData(){
     .catch(e => console.error("data.json fetch failed", e));
 }
 
+function fmtNum(n, dp){
+  if (n == null || isNaN(n)) return "—";
+  return Number(n).toFixed(dp);
+}
+
+function modeClass(op){
+  switch(op){
+    case 1: return "disconnected";
+    case 2: return "ready";       // AwaitingStart
+    case 3: return "charging";
+    case 4: return "completed";
+    case 5: return "error";
+    case 6: return "ready";       // ReadyToCharge
+    case 7: return "paused";      // AwaitingAuthentication
+    default: return "disconnected";
+  }
+}
+
+async function loadLiveState(){
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`,
+      { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
+    const rows = await r.json();
+    if (!rows.length) return;
+    const state = JSON.parse(rows[0].value);
+    const easee = state.easee || {};
+    const tuya = state.tuya || {};
+
+    // Mode pill
+    const pill = document.getElementById("charge-mode");
+    pill.className = "charge-mode-pill " + modeClass(easee.op_mode);
+    pill.textContent = easee.op_mode_text || (easee.online === false ? "Offline" : "Loading…");
+
+    // Updated timestamp
+    if (state.updated_at){
+      const d = new Date(state.updated_at);
+      document.getElementById("charge-updated").textContent =
+        "Updated " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    }
+
+    // Metrics
+    document.getElementById("live-kw").textContent = fmtNum(easee.total_power_kw, 2);
+    document.getElementById("live-volts").textContent = fmtNum(easee.voltage, 1) + " V";
+    document.getElementById("live-amps").textContent = fmtNum(easee.output_current_a, 1);
+    const t2 = fmtNum(easee.current_t2_a, 1), t3 = fmtNum(easee.current_t3_a, 1);
+    document.getElementById("live-amps-detail").textContent = `T2 ${t2} A · T3 ${t3} A`;
+    document.getElementById("live-session").textContent = fmtNum(easee.session_kwh, 2);
+    document.getElementById("live-lifetime").textContent = fmtNum(easee.lifetime_kwh, 1);
+
+    // Breaker
+    const bs = document.getElementById("breaker-status");
+    if (tuya.switch_on === true){ bs.className = "breaker-status on"; bs.textContent = "ON"; }
+    else if (tuya.switch_on === false){ bs.className = "breaker-status off"; bs.textContent = "OFF"; }
+    else { bs.className = "breaker-status off"; bs.textContent = tuya.online ? "—" : "OFFLINE"; }
+    document.getElementById("breaker-kwh").textContent =
+      tuya.total_kwh != null ? fmtNum(tuya.total_kwh, 2) + " kWh through it" : "—";
+  } catch(e){ console.error("live state fetch failed", e); }
+}
+
 async function init(){
   await loadThreshold();
   await fetchData();
   loadFreeElectricity();
-  setInterval(fetchData, 60_000);            // refresh bands every minute
-  setInterval(loadThreshold, 5*60_000);      // refresh threshold every 5 min
+  loadLiveState();
+  setInterval(fetchData, 60_000);              // refresh bands every minute
+  setInterval(loadThreshold, 5*60_000);        // refresh threshold every 5 min
   setInterval(loadFreeElectricity, 60*60_000); // refresh free check hourly
+  setInterval(loadLiveState, 15_000);          // refresh live charging state every 15s
 }
 init();
 </script>
