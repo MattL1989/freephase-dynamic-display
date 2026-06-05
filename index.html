@@ -30,9 +30,7 @@
   .location strong{color:var(--text);font-weight:600;letter-spacing:0.05em}
   .clock{font-size:22px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;text-align:right}
   .clock .date{color:var(--text-dim);font-size:12px;display:block;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;margin-top:2px}
-</content>
-
-  /* HERO NOW CARD */
+/* HERO NOW CARD */
   .now-card{position:relative;border-radius:28px;padding:40px 44px;background:var(--surface);
     border:1px solid var(--border);overflow:hidden;margin-bottom:36px}
   .now-card::before{content:'';position:absolute;inset:0;pointer-events:none;
@@ -62,9 +60,7 @@
   .charging-pill.off{background:rgba(255,58,90,0.12);color:var(--red);border-color:rgba(255,58,90,0.4)}
   .next-band{font-size:16px;color:var(--text-dim);line-height:1.6}
   .next-band b{color:var(--text);font-weight:600}
-</content>
-
-  /* FREE ELECTRICITY BANNER */
+/* FREE ELECTRICITY BANNER */
   .free-banner{margin:0 0 36px;padding:22px 32px;border-radius:22px;
     background:linear-gradient(120deg,#0a6fff 0%,#00d4ff 100%);
     box-shadow:0 0 40px rgba(0,212,255,0.35),inset 0 1px 0 rgba(255,255,255,0.2);
@@ -102,9 +98,7 @@
   .band-delta .below{color:var(--green);font-weight:600}
   .band-delta .above{color:var(--red);font-weight:600}
   .band.pending{opacity:0.45;border-style:dashed}
-</content>
-
-  /* THRESHOLD PANEL */
+/* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
   .threshold-head{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:22px}
@@ -147,9 +141,7 @@
     <div class="location"><strong>EDF FreePhase Dynamic</strong> — ST15 0WL</div>
     <div class="clock" id="clock"><span class="time">--:--:--</span><span class="date">—</span></div>
   </header>
-</content>
-
-  <section id="now-card" class="now-card green">
+<section id="now-card" class="now-card green">
     <div class="now-grid">
       <div class="now-main">
         <div class="now-label">Right Now</div>
@@ -201,8 +193,6 @@
     EDF FreePhase Display by Matt Lewis · Auto-refreshes every minute
   </footer>
 </div>
-</content>
-
 <script>
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
@@ -256,8 +246,6 @@ function pctMarkup(price){
   const arrow = pct >= 0 ? "▼" : "▲";
   return `<span class="${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"}</span>`;
 }
-</content>
-
 function buildBand(elId, band, price, time, isCurrent){
   const el = document.getElementById(elId);
   const pending = price == null;
@@ -323,8 +311,6 @@ function renderBands(data){
   buildBand("tomorrow-amber",     "amber", data?.tomorrow?.amber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00", false);
   buildBand("tomorrow-red",       "red",   data?.tomorrow?.red?.price ?? null,   "16:00 - 19:00", false);
 }
-</content>
-
 async function loadFreeElectricity(){
   const el = document.getElementById("free-electricity");
   try {
@@ -409,4 +395,3 @@ init();
 </script>
 </body>
 </html>
-</content>
