@@ -58,8 +58,22 @@
     font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:14px}
   .charging-pill.on{background:rgba(30,229,96,0.12);color:var(--green);border-color:rgba(30,229,96,0.4)}
   .charging-pill.off{background:rgba(255,58,90,0.12);color:var(--red);border-color:rgba(255,58,90,0.4)}
-  .next-band{font-size:16px;color:var(--text-dim);line-height:1.6}
+  .next-band{font-size:16px;color:var(--text-dim);line-height:1.6;margin-top:14px}
   .next-band b{color:var(--text);font-weight:600}
+
+  /* Small per-device status pills (hero card) */
+  .device-pills{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .device-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;
+    font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);
+    align-self:flex-end;font-variant-numeric:tabular-nums}
+  .device-pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+  .device-pill.charging{color:var(--green);background:rgba(30,229,96,0.10);border-color:rgba(30,229,96,0.35)}
+  .device-pill.idle{color:var(--cyan);background:rgba(34,211,238,0.10);border-color:rgba(34,211,238,0.35)}
+  .device-pill.off{color:var(--text-dim)}
+  .device-pill.error{color:var(--red);background:rgba(255,58,90,0.12);border-color:rgba(255,58,90,0.4)}
+  .device-pill.completed{color:#7aa9ff;background:rgba(122,169,255,0.12);border-color:rgba(122,169,255,0.4)}
+  .device-pill.off::before{box-shadow:none}
 /* FREE ELECTRICITY BANNER */
   .free-banner{margin:0 0 36px;padding:22px 32px;border-radius:22px;
     background:linear-gradient(120deg,#0a6fff 0%,#00d4ff 100%);
@@ -189,7 +203,11 @@
     .now-price{font-size:80px}
     .now-grid{grid-template-columns:1fr}
     .now-side{text-align:left;min-width:0}
+    .device-pill{align-self:flex-start}
     .threshold-current .value{font-size:36px}
+    .threshold-input{font-size:16px;padding:14px 16px}
+    .threshold-input::placeholder{font-size:13px}
+    .threshold-save{padding:14px 24px;font-size:14px}
     .header{flex-direction:column;align-items:flex-start;gap:8px}
     .clock{text-align:left}
   }
@@ -211,6 +229,10 @@
       </div>
       <div class="now-side">
         <div class="charging-pill" id="charging-pill">Charging —</div>
+        <div class="device-pills">
+          <div class="device-pill off" id="easee-mini">Easee · —</div>
+          <div class="device-pill off" id="tuya-mini">Tuya · —</div>
+        </div>
         <div class="next-band" id="next-band">—</div>
       </div>
     </div>
@@ -437,9 +459,9 @@ function renderNow(data){
   if (currentThreshold == null || price == null){
     pill.className = "charging-pill"; pill.textContent = "Charging —";
   } else if (price <= currentThreshold){
-    pill.className = "charging-pill on"; pill.textContent = `Charging ON · ≤ ${currentThreshold.toFixed(2)}p`;
+    pill.className = "charging-pill on"; pill.textContent = `Charging Enabled · ≤ ${currentThreshold.toFixed(2)}p`;
   } else {
-    pill.className = "charging-pill off"; pill.textContent = `Paused · > ${currentThreshold.toFixed(2)}p`;
+    pill.className = "charging-pill off"; pill.textContent = `Charging Disabled · > ${currentThreshold.toFixed(2)}p`;
   }
 }
 
@@ -543,6 +565,37 @@ function modeClass(op){
   }
 }
 
+function easeeStatusFromLive(easee){
+  if (!easee || easee.online === false) return {cls:"off", text:"Offline"};
+  switch (easee.op_mode){
+    case 1: return {cls:"off",       text:"Disconnected"};
+    case 2: return {cls:"idle",      text:"Awaiting Start"};
+    case 3: return {cls:"charging",  text:"Charging"};
+    case 4: return {cls:"completed", text:"Completed"};
+    case 5: return {cls:"error",     text:"Error"};
+    case 6: return {cls:"idle",      text:"Ready"};
+    case 7: return {cls:"idle",      text:"Authenticating"};
+    case 9: return {cls:"off",       text:"Deauthenticating"};
+    default: return {cls:"off",      text:"Unknown"};
+  }
+}
+
+function tuyaStatusFromLive(tuya){
+  if (!tuya || tuya.online === false) return {cls:"off", text:"Offline"};
+  if (tuya.switch_on === false) return {cls:"off", text:"Off"};
+  if (tuya.switch_on === true){
+    if (tuya.power_kw != null && tuya.power_kw >= 0.1) return {cls:"charging", text:"Active"};
+    return {cls:"idle", text:"Idle"};
+  }
+  return {cls:"off", text:"Unknown"};
+}
+
+function updateDeviceMiniPill(elId, label, status){
+  const el = document.getElementById(elId);
+  el.className = "device-pill " + status.cls;
+  el.textContent = `${label} · ${status.text}`;
+}
+
 async function loadLiveState(){
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`,
@@ -557,6 +610,10 @@ async function loadLiveState(){
     const pill = document.getElementById("charge-mode");
     pill.className = "charge-mode-pill " + modeClass(easee.op_mode);
     pill.textContent = easee.op_mode_text || (easee.online === false ? "Offline" : "Loading…");
+
+    // Mini status pills in the hero card
+    updateDeviceMiniPill("easee-mini", "Easee", easeeStatusFromLive(easee));
+    updateDeviceMiniPill("tuya-mini",  "Tuya",  tuyaStatusFromLive(tuya));
 
     // Updated timestamp
     if (state.updated_at){
