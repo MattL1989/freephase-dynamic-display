@@ -123,6 +123,13 @@
   .metric-value.big{font-size:42px}
   .metric-value .unit{font-size:14px;color:var(--text-dim);margin-left:4px;font-weight:500}
   .metric-sub{font-size:12px;color:var(--text-dim);margin-top:6px;font-variant-numeric:tabular-nums}
+  /* FAULT BANNER (Tuya alarm flags) */
+  .fault-banner{margin:0 0 16px;padding:14px 18px;border-radius:14px;
+    background:rgba(255,58,90,0.12);border:1px solid rgba(255,58,90,0.5);
+    color:var(--red);font-size:14px;font-weight:600;letter-spacing:0.03em;
+    display:flex;align-items:center;gap:12px}
+  .fault-banner::before{content:"⚠";font-size:18px}
+
   .charge-section{margin-top:24px}
   .charge-section:first-of-type{margin-top:0}
   .charge-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
@@ -264,6 +271,7 @@
         <div class="charge-section-title">Tuya Breaker <span class="charge-cap">3.7 kW upstream relay</span></div>
         <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
       </div>
+      <div id="tuya-faults" class="fault-banner" hidden></div>
       <div class="charge-grid">
         <div class="charge-metric">
           <div class="metric-label">Live Power</div>
@@ -274,6 +282,11 @@
           <div class="metric-label">Current</div>
           <div class="metric-value big"><span id="tuya-amps">—</span><span class="unit">A</span></div>
           <div class="metric-sub">through the breaker</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Session</div>
+          <div class="metric-value"><span id="tuya-session">—</span><span class="unit">kWh</span></div>
+          <div class="metric-sub">since breaker on</div>
         </div>
         <div class="charge-metric">
           <div class="metric-label">Lifetime</div>
@@ -579,7 +592,18 @@ async function loadLiveState(){
     document.getElementById("tuya-kw").textContent     = fmtNum(power_kw, 3);
     document.getElementById("tuya-volts").textContent  = (voltage != null ? fmtNum(voltage, 1) : "—") + " V";
     document.getElementById("tuya-amps").textContent   = fmtNum(current_a, 2);
+    document.getElementById("tuya-session").textContent  = fmtNum(tuya.session_kwh, 3);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
+
+    // Fault banner: show only when one or more alarm bits are active
+    const faultEl = document.getElementById("tuya-faults");
+    const faults = Array.isArray(tuya.faults) ? tuya.faults : [];
+    if (faults.length){
+      faultEl.hidden = false;
+      faultEl.textContent = "Breaker fault: " + faults.map(s => s.replace(/_/g, " ")).join(", ");
+    } else {
+      faultEl.hidden = true; faultEl.textContent = "";
+    }
 
     // NB: state.green_force comes from the Pi's last cycle so it lags writes.
     // We deliberately don't reconcile the toggle here - loadGreenForce() reads
