@@ -124,11 +124,15 @@
   .metric-value .unit{font-size:14px;color:var(--text-dim);margin-left:4px;font-weight:500}
   .metric-sub{font-size:12px;color:var(--text-dim);margin-top:6px;font-variant-numeric:tabular-nums}
   /* FAULT BANNER (Tuya alarm flags) */
-  .fault-banner{margin:0 0 16px;padding:14px 18px;border-radius:14px;
-    background:rgba(255,58,90,0.12);border:1px solid rgba(255,58,90,0.5);
-    color:var(--red);font-size:14px;font-weight:600;letter-spacing:0.03em;
-    display:flex;align-items:center;gap:12px}
-  .fault-banner::before{content:"⚠";font-size:18px}
+  .fault-banner{margin:0 0 16px;padding:12px 18px;border-radius:14px;
+    font-size:13px;font-weight:600;letter-spacing:0.03em;
+    display:flex;align-items:center;gap:10px}
+  .fault-banner.healthy{background:rgba(30,229,96,0.08);border:1px solid rgba(30,229,96,0.3);color:var(--green)}
+  .fault-banner.healthy::before{content:"●";font-size:14px;color:var(--green);text-shadow:0 0 12px var(--green)}
+  .fault-banner.fault{background:rgba(255,58,90,0.14);border:1px solid rgba(255,58,90,0.55);color:var(--red);padding:14px 18px;font-size:14px}
+  .fault-banner.fault::before{content:"⚠";font-size:18px}
+  .fault-banner.unknown{background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim)}
+  .fault-banner.unknown::before{content:"○";font-size:14px;color:var(--text-very-dim)}
 
   .charge-section{margin-top:24px}
   .charge-section:first-of-type{margin-top:0}
@@ -271,7 +275,7 @@
         <div class="charge-section-title">Tuya Breaker <span class="charge-cap">3.7 kW upstream relay</span></div>
         <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
       </div>
-      <div id="tuya-faults" class="fault-banner" hidden></div>
+      <div id="tuya-faults" class="fault-banner unknown">Breaker health unknown</div>
       <div class="charge-grid">
         <div class="charge-metric">
           <div class="metric-label">Live Power</div>
@@ -595,14 +599,19 @@ async function loadLiveState(){
     document.getElementById("tuya-session").textContent  = fmtNum(tuya.session_kwh, 3);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
 
-    // Fault banner: show only when one or more alarm bits are active
+    // Fault banner: always visible. Green ● when healthy, red ⚠ when any alarm bit is active,
+    // muted ○ if we don't yet have a faults field from the Pi (older live_state shape).
     const faultEl = document.getElementById("tuya-faults");
-    const faults = Array.isArray(tuya.faults) ? tuya.faults : [];
-    if (faults.length){
-      faultEl.hidden = false;
-      faultEl.textContent = "Breaker fault: " + faults.map(s => s.replace(/_/g, " ")).join(", ");
+    faultEl.hidden = false;
+    if (tuya.faults == null){
+      faultEl.className = "fault-banner unknown";
+      faultEl.textContent = "Breaker health unknown";
+    } else if (Array.isArray(tuya.faults) && tuya.faults.length){
+      faultEl.className = "fault-banner fault";
+      faultEl.textContent = "Breaker fault: " + tuya.faults.map(s => s.replace(/_/g, " ")).join(", ");
     } else {
-      faultEl.hidden = true; faultEl.textContent = "";
+      faultEl.className = "fault-banner healthy";
+      faultEl.textContent = "No faults · breaker healthy";
     }
 
     // NB: state.green_force comes from the Pi's last cycle so it lags writes.
