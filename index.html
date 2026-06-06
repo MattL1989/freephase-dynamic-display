@@ -549,10 +549,10 @@ async function loadLiveState(){
     }
 
     // Metrics
-    document.getElementById("live-kw").textContent = fmtNum(easee.total_power_kw, 2);
+    document.getElementById("live-kw").textContent = fmtNum(easee.total_power_kw, 3);
     document.getElementById("live-volts").textContent = fmtNum(easee.voltage, 1) + " V";
-    document.getElementById("live-amps").textContent = fmtNum(easee.output_current_a, 1);
-    const t2 = fmtNum(easee.current_t2_a, 1), t3 = fmtNum(easee.current_t3_a, 1);
+    document.getElementById("live-amps").textContent = fmtNum(easee.output_current_a, 2);
+    const t2 = fmtNum(easee.current_t2_a, 2), t3 = fmtNum(easee.current_t3_a, 2);
     document.getElementById("live-amps-detail").textContent = `T2 ${t2} A · T3 ${t3} A`;
     document.getElementById("live-session").textContent = fmtNum(easee.session_kwh, 2);
     document.getElementById("live-lifetime").textContent = fmtNum(easee.lifetime_kwh, 1);
@@ -576,9 +576,9 @@ async function loadLiveState(){
     const power_kw  = (tuya.power_kw  != null) ? tuya.power_kw  : (breakerOn ? 0 : null);
     const current_a = (tuya.current_a != null) ? tuya.current_a : (breakerOn ? 0 : null);
     const voltage   = (tuya.voltage   != null) ? tuya.voltage   : (breakerOn ? lastTuyaVoltage : null);
-    document.getElementById("tuya-kw").textContent     = fmtNum(power_kw, 2);
+    document.getElementById("tuya-kw").textContent     = fmtNum(power_kw, 3);
     document.getElementById("tuya-volts").textContent  = (voltage != null ? fmtNum(voltage, 1) : "—") + " V";
-    document.getElementById("tuya-amps").textContent   = fmtNum(current_a, 1);
+    document.getElementById("tuya-amps").textContent   = fmtNum(current_a, 2);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
 
     // NB: state.green_force comes from the Pi's last cycle so it lags writes.
