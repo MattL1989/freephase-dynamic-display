@@ -18,6 +18,7 @@
     --amber: #ffb020;
     --red: #ff3a5a;
     --cyan: #22d3ee;
+    --purple: #c084fc;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;color:var(--text);min-height:100vh;
@@ -61,6 +62,10 @@
   .next-band{font-size:16px;color:var(--text-dim);line-height:1.6;margin-top:14px}
   .next-band b{color:var(--text);font-weight:600}
 
+  /* Right-now meta line (band-average comparison so you can see if EDF revised the slot rate) */
+  .now-meta{font-size:13px;color:var(--text-very-dim);margin-top:10px;line-height:1.5;letter-spacing:0.02em}
+  .now-meta b{color:var(--text-dim);font-weight:600}
+
   /* Small per-device status pills (hero card) */
   .device-pills{display:flex;flex-direction:column;gap:6px;margin-top:10px}
   .device-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;
@@ -75,7 +80,7 @@
   .device-pill.completed{color:#7aa9ff;background:rgba(122,169,255,0.12);border-color:rgba(122,169,255,0.4)}
   .device-pill.off::before{box-shadow:none}
 /* FREE ELECTRICITY BANNER */
-  .free-banner{margin:0 0 36px;padding:22px 32px;border-radius:22px;
+  .free-banner{margin:0 0 24px;padding:22px 32px;border-radius:22px;
     background:linear-gradient(120deg,#0a6fff 0%,#00d4ff 100%);
     box-shadow:0 0 40px rgba(0,212,255,0.35),inset 0 1px 0 rgba(255,255,255,0.2);
     display:flex;align-items:center;gap:24px}
@@ -112,8 +117,7 @@
   .band-delta .below{color:var(--green);font-weight:600}
   .band-delta .above{color:var(--red);font-weight:600}
   .band.pending{opacity:0.45;border-style:dashed}
-
-  /* CHARGING PANEL */
+/* CHARGING PANEL */
   .charge-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
   .charge-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
@@ -154,6 +158,9 @@
   .charge-section-title{font-size:18px;font-weight:700;letter-spacing:0.02em;color:var(--text)}
   .charge-cap{font-size:13px;color:var(--text-dim);font-weight:500;margin-left:6px;letter-spacing:0}
 
+  /* Immersion section uses a purple accent so it's visually distinct from the EV charger sections */
+  .charge-mode-pill.imm-on{color:var(--purple);border-color:rgba(192,132,252,0.45);
+    background:rgba(192,132,252,0.08);animation:pulse 1.6s ease-in-out infinite}
 /* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
@@ -219,26 +226,30 @@
     <div class="location"><strong>EDF FreePhase Dynamic</strong> — ST15 0WL</div>
     <div class="clock" id="clock"><span class="time">--:--:--</span><span class="date">—</span></div>
   </header>
-<section id="now-card" class="now-card green">
+
+  <!-- Free electricity banner moved ABOVE the hero card so the headline is the first thing on screen -->
+  <div id="free-electricity"></div>
+
+  <section id="now-card" class="now-card green">
     <div class="now-grid">
       <div class="now-main">
         <div class="now-label">Right Now</div>
         <div class="now-band"><span class="now-dot"></span><span id="now-band-name">—</span></div>
         <div class="now-price"><span id="now-price">—</span><span class="unit">p / kWh</span></div>
         <div class="now-context" id="now-context">—</div>
+        <div class="now-meta" id="now-meta"></div>
       </div>
       <div class="now-side">
         <div class="charging-pill" id="charging-pill">Charging —</div>
         <div class="device-pills">
           <div class="device-pill off" id="easee-mini">Easee · —</div>
           <div class="device-pill off" id="tuya-mini">Tuya · —</div>
+          <div class="device-pill off" id="immersion-mini">Immersion · —</div>
         </div>
         <div class="next-band" id="next-band">—</div>
       </div>
     </div>
   </section>
-
-  <div id="free-electricity"></div>
 
   <div class="section-heading">Today</div>
   <div class="bands">
@@ -321,6 +332,36 @@
         </div>
       </div>
     </div>
+
+    <!-- IMMERSION HEATER (Tuya smart plug, switches the hot-water cylinder when price < 2p) -->
+    <div class="charge-section">
+      <div class="charge-section-head">
+        <div class="charge-section-title">Immersion Heater <span class="charge-cap">auto-on under 2p · 2h max runtime</span></div>
+        <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
+      </div>
+      <div class="charge-grid">
+        <div class="charge-metric">
+          <div class="metric-label">Switch</div>
+          <div class="metric-value"><span id="imm-switch">—</span></div>
+          <div class="metric-sub" id="imm-switch-sub">remote relay state</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Auto-cutoff</div>
+          <div class="metric-value"><span id="imm-remaining">—</span></div>
+          <div class="metric-sub" id="imm-remaining-sub">time until safety-off</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">On Since</div>
+          <div class="metric-value" style="font-size:24px"><span id="imm-since">—</span></div>
+          <div class="metric-sub">most recent switch-on</div>
+        </div>
+        <div class="charge-metric">
+          <div class="metric-label">Threshold</div>
+          <div class="metric-value">&lt; 2.00<span class="unit">p</span></div>
+          <div class="metric-sub">automatic only</div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="threshold-panel">
@@ -371,6 +412,7 @@ const WINDOWS = [
 
 let currentThreshold = null;
 let currentGreenForce = null;        // null = unknown; bool when fetched
+let currentLivePrice = null;         // the actual half-hourly EDF rate the Pi sees; null until live_state arrives
 let lastData = null;
 let lastTuyaVoltage = null;          // remember most recent voltage we saw so we don't dash out
 
@@ -427,9 +469,14 @@ function buildBand(elId, band, price, time, isCurrent){
   `;
 }
 
+// Prefer the Pi's live half-hourly price (currentLivePrice) over the daily band average from data.json.
+// This is the same number the controller compares against PRICE_THRESHOLD, so what the display shows
+// is what the controller is actually deciding on — no more "display said 1.59p but Pi saw 13.2p".
 function renderNow(data){
   const w = currentWindow();
-  const price = getSourcePrice(data, w.source);
+  const bandAvg = getSourcePrice(data, w.source);
+  const price = (currentLivePrice != null) ? currentLivePrice : bandAvg;
+
   const nowCard = document.getElementById("now-card");
   nowCard.className = `now-card ${w.band}`;
   document.getElementById("now-band-name").textContent = w.band.toUpperCase();
@@ -446,6 +493,24 @@ function renderNow(data){
       `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"} baseline</span> (${BASELINE.toFixed(2)}p)`;
   }
 
+  // Meta line: show source + how it compares to the daily band average so the user can spot
+  // intraday rate revisions from EDF without confusion.
+  const metaEl = document.getElementById("now-meta");
+  if (currentLivePrice != null && bandAvg != null){
+    const diff = currentLivePrice - bandAvg;
+    if (Math.abs(diff) < 0.05){
+      metaEl.innerHTML = `Live half-hourly rate · matches today's <b>${w.band}</b> band average (<b>${bandAvg.toFixed(2)}p</b>)`;
+    } else {
+      const sign = diff > 0 ? "+" : "";
+      const direction = diff > 0 ? "above" : "below";
+      metaEl.innerHTML = `Live half-hourly rate · <b>${sign}${diff.toFixed(2)}p</b> ${direction} today's <b>${w.band}</b> band average (<b>${bandAvg.toFixed(2)}p</b>)`;
+    }
+  } else if (currentLivePrice != null){
+    metaEl.innerHTML = `Live half-hourly rate from Pi (band average not yet published)`;
+  } else {
+    metaEl.innerHTML = `Daily <b>${w.band}</b> band average — Pi hasn't reported a live rate yet`;
+  }
+
   const idx = WINDOWS.indexOf(w);
   const next = WINDOWS[(idx + 1) % WINDOWS.length];
   const nextPrice = getSourcePrice(data, next.source);
@@ -455,6 +520,7 @@ function renderNow(data){
   nextHtml += ` in <b>${eta}</b>`;
   document.getElementById("next-band").innerHTML = `Next: ${nextHtml}`;
 
+  // Charging pill — compare the actual live price (not the band average) to the threshold
   const pill = document.getElementById("charging-pill");
   if (currentThreshold == null || price == null){
     pill.className = "charging-pill"; pill.textContent = "Charging —";
@@ -590,12 +656,26 @@ function tuyaStatusFromLive(tuya){
   return {cls:"off", text:"Unknown"};
 }
 
+function immersionStatusFromLive(imm){
+  if (!imm || imm.online === false) return {cls:"off", text:"Offline"};
+  if (imm.switch_on === true) return {cls:"charging", text:"Heating"};
+  if (imm.switch_on === false) return {cls:"off", text:"Off"};
+  return {cls:"off", text:"Unknown"};
+}
+
 function updateDeviceMiniPill(elId, label, status){
   const el = document.getElementById(elId);
   el.className = "device-pill " + status.cls;
   el.textContent = `${label} · ${status.text}`;
 }
 
+function fmtDuration(sec){
+  if (sec == null || sec < 0) return "—";
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${sec}s`;
+}
 async function loadLiveState(){
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`,
@@ -605,6 +685,12 @@ async function loadLiveState(){
     const state = JSON.parse(rows[0].value);
     const easee = state.easee || {};
     const tuya = state.tuya || {};
+    const imm  = state.immersion || {};
+
+    // Live half-hourly EDF rate the Pi sees, published from check_price_and_control().
+    // Stored globally so renderNow() (called by data.json refresh) uses it as the headline price.
+    currentLivePrice = (typeof state.current_price_p === "number") ? state.current_price_p : null;
+    if (lastData) renderNow(lastData);
 
     // Mode pill
     const pill = document.getElementById("charge-mode");
@@ -612,8 +698,9 @@ async function loadLiveState(){
     pill.textContent = easee.op_mode_text || (easee.online === false ? "Offline" : "Loading…");
 
     // Mini status pills in the hero card
-    updateDeviceMiniPill("easee-mini", "Easee", easeeStatusFromLive(easee));
-    updateDeviceMiniPill("tuya-mini",  "Tuya",  tuyaStatusFromLive(tuya));
+    updateDeviceMiniPill("easee-mini",     "Easee",     easeeStatusFromLive(easee));
+    updateDeviceMiniPill("tuya-mini",      "Tuya",      tuyaStatusFromLive(tuya));
+    updateDeviceMiniPill("immersion-mini", "Immersion", immersionStatusFromLive(imm));
 
     // Updated timestamp
     if (state.updated_at){
@@ -622,7 +709,7 @@ async function loadLiveState(){
         "Updated " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
     }
 
-    // Metrics
+    // Easee metrics
     document.getElementById("live-kw").textContent = fmtNum(easee.total_power_kw, 3);
     document.getElementById("live-volts").textContent = fmtNum(easee.voltage, 1) + " V";
     document.getElementById("live-amps").textContent = fmtNum(easee.output_current_a, 2);
@@ -669,6 +756,31 @@ async function loadLiveState(){
     } else {
       faultEl.className = "fault-banner healthy";
       faultEl.textContent = "No faults · breaker healthy";
+    }
+
+    // ------------ Immersion heater section ------------
+    const immPill = document.getElementById("immersion-mode");
+    if (imm.online === false || imm.switch_on == null){
+      immPill.className = "charge-mode-pill disconnected"; immPill.textContent = imm.online === false ? "OFFLINE" : "—";
+    } else if (imm.switch_on === true){
+      immPill.className = "charge-mode-pill imm-on"; immPill.textContent = "ON";
+    } else {
+      immPill.className = "charge-mode-pill disconnected"; immPill.textContent = "OFF";
+    }
+    document.getElementById("imm-switch").textContent =
+      (imm.switch_on === true ? "ON" : imm.switch_on === false ? "OFF" : "—");
+    document.getElementById("imm-switch-sub").textContent =
+      (imm.online === false ? "device offline" : "Tuya smart plug (192.168.1.160)");
+    document.getElementById("imm-remaining").textContent =
+      (imm.switch_on === true && imm.remaining_s != null) ? fmtDuration(imm.remaining_s) : "—";
+    document.getElementById("imm-remaining-sub").textContent =
+      (imm.switch_on === true) ? "until safety-off" : "armed when heater turns on";
+    if (imm.on_since){
+      const d = new Date(imm.on_since);
+      document.getElementById("imm-since").textContent =
+        d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    } else {
+      document.getElementById("imm-since").textContent = "—";
     }
 
     // NB: state.green_force comes from the Pi's last cycle so it lags writes.
