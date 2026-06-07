@@ -82,8 +82,13 @@ jobs:
             exit 1
           fi
 
-          # Average all half-hourly slots in one window, or in the union of two windows
+          # Average the half-hourly slots in one window, or in the union of two windows
           # (used for amber, which spans morning AND evening).
+          # IMPORTANT: average over PAID slots only (value_inc_vat > 0) so the headline matches
+          # the number EDF publishes on edfenergy.com — they report the paid-slot average too.
+          # If we averaged across free slots as well (16 free + 12 paid at 3.72p), we'd report
+          # ~1.59p, which isn't a price anyone ever actually pays. The free banner above the
+          # card already tells users about the free window — no need to dilute the headline.
           extract_band() {
             local s1=$1
             local e1=$2
@@ -98,12 +103,18 @@ jobs:
                 ))
               | if length == 0 then null else
                   (
-                    . as $items
-                    | (($items | map(.value_inc_vat) | add) / length) as $avg
+                    . as $all
+                    | ($all | map(select(.value_inc_vat > 0))) as $paid
+                    | ($all | map(select(.value_inc_vat == 0))) as $free
+                    | (if ($paid | length) == 0 then 0
+                       else (($paid | map(.value_inc_vat) | add) / ($paid | length))
+                       end) as $avg
                     | {
                         price: $avg,
-                        start: ($items | map(.valid_from) | min),
-                        end: ($items | map(.valid_to) | max),
+                        start: ($all | map(.valid_from) | min),
+                        end: ($all | map(.valid_to) | max),
+                        paid_slots: ($paid | length),
+                        free_slots: ($free | length),
                         band:
                           (if ($avg / 100) < 0.20 then "green"
                            elif ($avg / 100) < 0.30 then "amber"
