@@ -452,10 +452,17 @@ function pctMarkup(price){
   const arrow = pct >= 0 ? "▼" : "▲";
   return `<span class="${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"}</span>`;
 }
-function buildBand(elId, band, price, time, isCurrent){
+function buildBand(elId, band, price, time, isCurrent, bandObj){
   const el = document.getElementById(elId);
   const pending = price == null;
   el.className = `band ${band} ${isCurrent?"current":""} ${pending?"pending":""}`;
+  // If this band has free slots, surface that — the average is over PAID slots only (so it matches
+  // EDF's headline), but a user looking at "amber 3.72p" deserves to know "16 of 28 slots free today".
+  let breakdown = "";
+  if (bandObj && typeof bandObj.free_slots === "number" && bandObj.free_slots > 0){
+    const total = (bandObj.paid_slots || 0) + bandObj.free_slots;
+    breakdown = `<div class="band-delta" style="color:#22d3ee">${bandObj.free_slots} of ${total} slots free · paid-slot avg shown</div>`;
+  }
   el.innerHTML = `
     <div class="band-head">
       <div class="band-name">${band.toUpperCase()}</div>
@@ -466,6 +473,7 @@ function buildBand(elId, band, price, time, isCurrent){
       : `<div class="band-price">${price.toFixed(2)}<span class="unit">p / kWh</span></div>`}
     <div class="band-time">${time}</div>
     ${pending ? "" : `<div class="band-delta">${pctMarkup(price)} vs ${BASELINE.toFixed(2)}p baseline</div>`}
+    ${breakdown}
   `;
 }
 
@@ -533,13 +541,13 @@ function renderNow(data){
 
 function renderBands(data){
   const w = currentWindow();
-  buildBand("today-green-morning","green", data?.today?.green?.price ?? null,    "00:01 - 06:00", w.key==="today-green-morning");
-  buildBand("today-amber",        "amber", data?.today?.amber?.price ?? null,    "06:00 - 16:00 & 19:00 - 23:00", w.key==="today-amber");
-  buildBand("today-red",          "red",   data?.today?.red?.price ?? null,      "16:00 - 19:00", w.key==="today-red");
-  buildBand("today-green-late",   "green", data?.tomorrow?.green?.price ?? null, "23:00 - 00:00", w.key==="today-green-late");
-  buildBand("tomorrow-green-morning","green", data?.tomorrow?.green?.price ?? null, "00:01 - 06:00", false);
-  buildBand("tomorrow-amber",     "amber", data?.tomorrow?.amber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00", false);
-  buildBand("tomorrow-red",       "red",   data?.tomorrow?.red?.price ?? null,   "16:00 - 19:00", false);
+  buildBand("today-green-morning","green", data?.today?.green?.price ?? null,    "00:01 - 06:00", w.key==="today-green-morning", data?.today?.green);
+  buildBand("today-amber",        "amber", data?.today?.amber?.price ?? null,    "06:00 - 16:00 & 19:00 - 23:00", w.key==="today-amber", data?.today?.amber);
+  buildBand("today-red",          "red",   data?.today?.red?.price ?? null,      "16:00 - 19:00", w.key==="today-red", data?.today?.red);
+  buildBand("today-green-late",   "green", data?.tomorrow?.green?.price ?? null, "23:00 - 00:00", w.key==="today-green-late", data?.tomorrow?.green);
+  buildBand("tomorrow-green-morning","green", data?.tomorrow?.green?.price ?? null, "00:01 - 06:00", false, data?.tomorrow?.green);
+  buildBand("tomorrow-amber",     "amber", data?.tomorrow?.amber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00", false, data?.tomorrow?.amber);
+  buildBand("tomorrow-red",       "red",   data?.tomorrow?.red?.price ?? null,   "16:00 - 19:00", false, data?.tomorrow?.red);
 }
 async function loadFreeElectricity(){
   const el = document.getElementById("free-electricity");
