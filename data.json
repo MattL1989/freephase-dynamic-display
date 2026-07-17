@@ -26,8 +26,29 @@
     }
   },
   "tomorrow": {
-    "green": null,
-    "amber": null,
-    "red": null
+    "green": {
+      "price": 22.68525,
+      "start": "2026-07-17T22:00:00Z",
+      "end": "2026-07-18T05:00:00Z",
+      "paid_slots": 14,
+      "free_slots": 0,
+      "band": "amber"
+    },
+    "amber": {
+      "price": 14.98455000000001,
+      "start": "2026-07-18T05:00:00Z",
+      "end": "2026-07-18T22:00:00Z",
+      "paid_slots": 26,
+      "free_slots": 2,
+      "band": "green"
+    },
+    "red": {
+      "price": 20.931749999999997,
+      "start": "2026-07-18T15:00:00Z",
+      "end": "2026-07-18T18:00:00Z",
+      "paid_slots": 6,
+      "free_slots": 0,
+      "band": "amber"
+    }
   }
 }
