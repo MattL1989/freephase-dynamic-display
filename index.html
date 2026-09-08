@@ -202,6 +202,27 @@
   .toggle-status.ok{color:var(--green)}
   .toggle-status.err{color:var(--red)}
 
+  /* PER-DEVICE MANUAL OVERRIDE (Auto / On / Off segmented control) */
+  .section-controls{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+  .override-control{display:inline-flex;gap:4px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:999px;padding:4px}
+  .override-control button{border:none;background:transparent;color:var(--text-dim);
+    font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    padding:7px 15px;border-radius:999px;cursor:pointer;transition:.15s ease;
+    font-variant-numeric:tabular-nums}
+  .override-control button:hover{color:var(--text)}
+  .override-control button.active[data-mode="auto"]{background:rgba(34,211,238,0.16);color:var(--cyan)}
+  .override-control button.active[data-mode="on"]  {background:rgba(30,229,96,0.16);color:var(--green)}
+  .override-control button.active[data-mode="off"] {background:rgba(255,58,90,0.16);color:var(--red)}
+  .override-status{font-size:12px;color:var(--text-dim);margin:2px 0 14px;min-height:14px}
+  .override-status.ok{color:var(--green)}
+  .override-status.err{color:var(--red)}
+  @media (max-width:720px){
+    .charge-section-head{align-items:flex-start}
+    .section-controls{align-items:flex-start}
+    .override-status{text-align:left}
+  }
+
   .footer{margin:56px 0 24px;color:var(--text-very-dim);font-size:12px;text-align:center}
 
   @media (max-width:720px){
@@ -276,8 +297,16 @@
     <div class="charge-section">
       <div class="charge-section-head">
         <div class="charge-section-title">Easee <span class="charge-cap">7 kW smart charger</span></div>
-        <div id="charge-mode" class="charge-mode-pill disconnected">Loading…</div>
+        <div class="section-controls">
+          <div id="charge-mode" class="charge-mode-pill disconnected">Loading…</div>
+          <div class="override-control" id="easee-override" role="group" aria-label="Easee manual control">
+            <button type="button" data-mode="auto" onclick="setOverride('easee','auto')">Auto</button>
+            <button type="button" data-mode="on"   onclick="setOverride('easee','on')">On</button>
+            <button type="button" data-mode="off"  onclick="setOverride('easee','off')">Off</button>
+          </div>
+        </div>
       </div>
+      <div id="easee-override-status" class="override-status"></div>
       <div class="charge-grid">
         <div class="charge-metric">
           <div class="metric-label">Live Power</div>
@@ -306,8 +335,16 @@
     <div class="charge-section">
       <div class="charge-section-head">
         <div class="charge-section-title">Tuya Breaker <span class="charge-cap">3.7 kW upstream relay</span></div>
-        <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
+        <div class="section-controls">
+          <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
+          <div class="override-control" id="breaker-override" role="group" aria-label="Breaker manual control">
+            <button type="button" data-mode="auto" onclick="setOverride('breaker','auto')">Auto</button>
+            <button type="button" data-mode="on"   onclick="setOverride('breaker','on')">On</button>
+            <button type="button" data-mode="off"  onclick="setOverride('breaker','off')">Off</button>
+          </div>
+        </div>
       </div>
+      <div id="breaker-override-status" class="override-status"></div>
       <div id="tuya-faults" class="fault-banner unknown">Breaker health unknown</div>
       <div class="charge-grid">
         <div class="charge-metric">
@@ -843,15 +880,95 @@ async function updateGreenForce(checked){
   }
 }
 
+// ------------------------------------------------------------------
+// PER-DEVICE MANUAL OVERRIDE (Auto / On / Off) for Easee + Tuya breaker.
+// Writes settings.easee_override / settings.breaker_override; the Pi picks
+// the change up within ~30s and applies it independently of the other device.
+// ------------------------------------------------------------------
+let currentEaseeOverride = null;
+let currentBreakerOverride = null;
+const overrideBusy = { easee: false, breaker: false };
+const OVERRIDE_KEY = { easee: "easee_override", breaker: "breaker_override" };
+const OVERRIDE_EL  = { easee: "easee-override", breaker: "breaker-override" };
+const OVERRIDE_STATUS_EL = { easee: "easee-override-status", breaker: "breaker-override-status" };
+
+function currentOverride(device){
+  return device === "easee" ? currentEaseeOverride : currentBreakerOverride;
+}
+
+function paintOverride(device, mode){
+  const box = document.getElementById(OVERRIDE_EL[device]);
+  if (!box) return;
+  box.querySelectorAll("button").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+}
+
+async function loadOverrides(){
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=in.(easee_override,breaker_override)&select=key,value`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" });
+    const rows = await r.json();
+    for (const row of (rows || [])){
+      const mode = String(row.value ?? "auto").trim().toLowerCase();
+      if (row.key === "easee_override" && !overrideBusy.easee){
+        currentEaseeOverride = mode; paintOverride("easee", mode);
+      }
+      if (row.key === "breaker_override" && !overrideBusy.breaker){
+        currentBreakerOverride = mode; paintOverride("breaker", mode);
+      }
+    }
+  } catch(e){ console.error("overrides fetch failed", e); }
+}
+
+async function setOverride(device, mode){
+  const statusEl = document.getElementById(OVERRIDE_STATUS_EL[device]);
+  overrideBusy[device] = true;
+  paintOverride(device, mode);                    // optimistic highlight
+  statusEl.className = "override-status"; statusEl.textContent = "Saving…";
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.${OVERRIDE_KEY[device]}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({ value: mode })
+    });
+    // return=representation yields [] if RLS silently filtered the update to 0 rows,
+    // so we treat an empty body as a permissions failure rather than a false success.
+    const body = await res.json().catch(() => null);
+    const name = device === "easee" ? "Easee" : "breaker";
+    if (res.ok && Array.isArray(body) && body.length){
+      if (device === "easee") currentEaseeOverride = mode; else currentBreakerOverride = mode;
+      const label = mode === "auto" ? "following price automation" : (mode === "on" ? "forced ON" : "forced OFF");
+      statusEl.className = "override-status ok";
+      statusEl.textContent = `Saved · ${name} ${label} (Pi applies within ~30s)`;
+    } else {
+      statusEl.className = "override-status err";
+      statusEl.textContent = res.ok ? "Save blocked — permission denied for this key" : `Save failed (HTTP ${res.status})`;
+      paintOverride(device, currentOverride(device));
+    }
+  } catch(e){
+    statusEl.className = "override-status err";
+    statusEl.textContent = "Network error: " + e.message;
+    paintOverride(device, currentOverride(device));
+  } finally {
+    setTimeout(() => { overrideBusy[device] = false; }, 1500);
+  }
+}
+
 async function init(){
   await loadThreshold();
   await loadGreenForce();
+  await loadOverrides();
   await fetchData();
   loadFreeElectricity();
   loadLiveState();
   setInterval(fetchData, 60_000);              // refresh bands every minute
   setInterval(loadThreshold, 30_000);          // refresh threshold every 30s
   setInterval(loadGreenForce, 30_000);         // refresh green-force toggle every 30s
+  setInterval(loadOverrides, 30_000);          // refresh per-device overrides every 30s
   setInterval(loadFreeElectricity, 60*60_000); // refresh free check hourly
   setInterval(loadLiveState, 15_000);          // refresh live charging state every 15s
 }
