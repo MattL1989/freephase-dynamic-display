@@ -217,6 +217,52 @@
   .override-status{font-size:12px;color:var(--text-dim);margin:2px 0 14px;min-height:14px}
   .override-status.ok{color:var(--green)}
   .override-status.err{color:var(--red)}
+
+  /* ONE-SHOT CHARGE SCHEDULE + SCROLL-WHEEL TIME PICKER */
+  .sched{margin:4px 0 18px;padding:16px 18px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:16px}
+  .sched-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+    flex-wrap:wrap;margin-bottom:14px}
+  .sched-title{font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim)}
+  .sched-hint{display:block;font-size:11px;font-weight:500;letter-spacing:0.02em;
+    text-transform:none;color:var(--text-very-dim);margin-top:3px}
+  .sched-state{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    padding:5px 12px;border-radius:999px;background:var(--surface);
+    border:1px solid var(--border);color:var(--text-dim);white-space:nowrap}
+  .sched-state.armed{color:var(--cyan);border-color:rgba(34,211,238,0.45);background:rgba(34,211,238,0.10)}
+  .sched-state.active{color:var(--green);border-color:rgba(30,229,96,0.45);background:rgba(30,229,96,0.10)}
+  .sched-body{display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap}
+  .wheel-block{display:flex;flex-direction:column;gap:6px}
+  .wheel-label{font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--text-very-dim);font-weight:600}
+  .wheels{display:flex;align-items:center;gap:2px;position:relative;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:0 8px}
+  /* centred selection band */
+  .wheels::before{content:"";position:absolute;left:4px;right:4px;top:36px;height:36px;
+    border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+    background:rgba(34,211,238,0.06);border-radius:8px;pointer-events:none}
+  .wheel{height:108px;width:52px;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;position:relative;z-index:1}
+  .wheel::-webkit-scrollbar{display:none}
+  .wheel-pad{height:36px}
+  .wheel-item{height:36px;line-height:36px;text-align:center;font-size:19px;font-weight:700;
+    color:var(--text-very-dim);font-variant-numeric:tabular-nums;cursor:pointer;transition:color .12s}
+  .wheel-item.sel{color:var(--cyan);font-size:21px}
+  .wheel-sep{font-size:19px;font-weight:700;color:var(--text-dim)}
+  .sched-actions{display:flex;gap:8px;align-items:center}
+  .sched-btn{border:none;border-radius:12px;padding:12px 20px;font-size:13px;font-weight:700;
+    letter-spacing:0.08em;text-transform:uppercase;cursor:pointer}
+  .sched-btn.arm{background:var(--cyan);color:var(--bg)}
+  .sched-btn.arm:hover{filter:brightness(1.08)}
+  .sched-btn.cancel{background:transparent;color:var(--text-dim);border:1px solid var(--border)}
+  .sched-btn.cancel:hover{color:var(--text)}
+  .sched-status{font-size:12px;color:var(--text-dim);margin-top:10px;min-height:14px}
+  .sched-status.ok{color:var(--green)}
+  .sched-status.err{color:var(--red)}
+  @media (max-width:720px){
+    .sched-body{gap:14px}
+    .sched-actions{width:100%}
+    .sched-btn{flex:1}
+  }
   @media (max-width:720px){
     .charge-section-head{align-items:flex-start}
     .section-controls{align-items:flex-start}
@@ -307,6 +353,39 @@
         </div>
       </div>
       <div id="easee-override-status" class="override-status"></div>
+
+      <div class="sched" id="easee-sched">
+        <div class="sched-head">
+          <div class="sched-title">Scheduled charge
+            <span class="sched-hint">One-shot · forces the Easee ON for the window, then hands back to Auto</span>
+          </div>
+          <div class="sched-state" id="easee-sched-state">Off</div>
+        </div>
+        <div class="sched-body">
+          <div class="wheel-block">
+            <div class="wheel-label">Start</div>
+            <div class="wheels">
+              <div class="wheel" id="easee-start-h"></div>
+              <div class="wheel-sep">:</div>
+              <div class="wheel" id="easee-start-m"></div>
+            </div>
+          </div>
+          <div class="wheel-block">
+            <div class="wheel-label">End</div>
+            <div class="wheels">
+              <div class="wheel" id="easee-end-h"></div>
+              <div class="wheel-sep">:</div>
+              <div class="wheel" id="easee-end-m"></div>
+            </div>
+          </div>
+          <div class="sched-actions">
+            <button type="button" class="sched-btn arm" onclick="armSchedule('easee')">Arm</button>
+            <button type="button" class="sched-btn cancel" onclick="cancelSchedule('easee')">Cancel</button>
+          </div>
+        </div>
+        <div class="sched-status" id="easee-sched-status"></div>
+      </div>
+
       <div class="charge-grid">
         <div class="charge-metric">
           <div class="metric-label">Live Power</div>
@@ -345,6 +424,39 @@
         </div>
       </div>
       <div id="breaker-override-status" class="override-status"></div>
+
+      <div class="sched" id="breaker-sched">
+        <div class="sched-head">
+          <div class="sched-title">Scheduled charge
+            <span class="sched-hint">One-shot · forces the breaker ON for the window, then hands back to Auto</span>
+          </div>
+          <div class="sched-state" id="breaker-sched-state">Off</div>
+        </div>
+        <div class="sched-body">
+          <div class="wheel-block">
+            <div class="wheel-label">Start</div>
+            <div class="wheels">
+              <div class="wheel" id="breaker-start-h"></div>
+              <div class="wheel-sep">:</div>
+              <div class="wheel" id="breaker-start-m"></div>
+            </div>
+          </div>
+          <div class="wheel-block">
+            <div class="wheel-label">End</div>
+            <div class="wheels">
+              <div class="wheel" id="breaker-end-h"></div>
+              <div class="wheel-sep">:</div>
+              <div class="wheel" id="breaker-end-m"></div>
+            </div>
+          </div>
+          <div class="sched-actions">
+            <button type="button" class="sched-btn arm" onclick="armSchedule('breaker')">Arm</button>
+            <button type="button" class="sched-btn cancel" onclick="cancelSchedule('breaker')">Cancel</button>
+          </div>
+        </div>
+        <div class="sched-status" id="breaker-sched-status"></div>
+      </div>
+
       <div id="tuya-faults" class="fault-banner unknown">Breaker health unknown</div>
       <div class="charge-grid">
         <div class="charge-metric">
@@ -958,10 +1070,174 @@ async function setOverride(device, mode){
   }
 }
 
+// ------------------------------------------------------------------
+// SCROLL-WHEEL TIME PICKER + ONE-SHOT CHARGE SCHEDULE
+// Writes settings.easee_schedule / settings.breaker_schedule as JSON:
+//   {enabled, start:"HH:MM", end:"HH:MM", fired}
+// The Pi forces the device ON when the window opens, hands it back to Auto
+// when it closes, and disarms the schedule (one-shot).
+// ------------------------------------------------------------------
+const WHEEL_ITEM_H = 36;
+const HOURS   = Array.from({length:24}, (_,i)=>String(i).padStart(2,"0"));
+const MINUTES = Array.from({length:12}, (_,i)=>String(i*5).padStart(2,"0"));
+const SCHED_KEY = { easee:"easee_schedule", breaker:"breaker_schedule" };
+const schedState = { easee:null, breaker:null };
+const schedWheelsSynced = { easee:false, breaker:false };
+
+function wheelIndex(el){
+  const n = (el._values || []).length;
+  if (!n) return 0;
+  return Math.max(0, Math.min(n-1, Math.round(el.scrollTop / WHEEL_ITEM_H)));
+}
+function markWheel(el){
+  const i = wheelIndex(el);
+  el.querySelectorAll(".wheel-item").forEach((it,j)=> it.classList.toggle("sel", j===i));
+}
+function setWheel(elId, idx, smooth){
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.scrollTo({ top: idx*WHEEL_ITEM_H, behavior: smooth ? "smooth" : "auto" });
+  setTimeout(()=>markWheel(el), smooth ? 260 : 0);
+}
+function wheelValue(elId){
+  const el = document.getElementById(elId);
+  if (!el || !el._values) return "00";
+  return el._values[wheelIndex(el)];
+}
+function setWheelTo(elId, val){
+  const el = document.getElementById(elId);
+  if (!el || !el._values) return;
+  const want = String(val).padStart(2,"0");
+  let i = el._values.indexOf(want);
+  if (i < 0){                       // e.g. a minute that isn't a multiple of 5 -> nearest
+    const n = parseInt(val,10) || 0;
+    let best = 0, bd = Infinity;
+    el._values.forEach((v,j)=>{ const d = Math.abs(parseInt(v,10) - n); if (d < bd){ bd = d; best = j; } });
+    i = best;
+  }
+  setWheel(elId, i, false);
+}
+function buildWheel(elId, values, initial){
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el._values = values;
+  el.innerHTML = '<div class="wheel-pad"></div>' +
+    values.map(v => `<div class="wheel-item">${v}</div>`).join("") +
+    '<div class="wheel-pad"></div>';
+  el.querySelectorAll(".wheel-item").forEach((it,i)=>{
+    it.addEventListener("click", ()=> setWheel(elId, i, true));
+  });
+  let t;
+  el.addEventListener("scroll", ()=>{
+    markWheel(el);
+    clearTimeout(t);
+    t = setTimeout(()=>{                       // settle onto the nearest item
+      el.scrollTo({ top: wheelIndex(el)*WHEEL_ITEM_H, behavior:"smooth" });
+      setTimeout(()=>markWheel(el), 220);
+    }, 120);
+  });
+  setWheel(elId, Math.max(0, values.indexOf(initial)), false);
+}
+function initWheels(){
+  for (const d of ["easee","breaker"]){
+    buildWheel(`${d}-start-h`, HOURS,   "01");
+    buildWheel(`${d}-start-m`, MINUTES, "00");
+    buildWheel(`${d}-end-h`,   HOURS,   "05");
+    buildWheel(`${d}-end-m`,   MINUTES, "00");
+  }
+}
+
+function renderSchedState(device){
+  const s = schedState[device];
+  const el = document.getElementById(`${device}-sched-state`);
+  if (!el) return;
+  if (!s || !s.enabled){ el.className = "sched-state"; el.textContent = "Off"; return; }
+  if (s.fired){ el.className = "sched-state active"; el.textContent = `Active · until ${s.end}`; }
+  else        { el.className = "sched-state armed";  el.textContent = `Armed · ${s.start} – ${s.end}`; }
+}
+
+async function loadSchedules(){
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=in.(easee_schedule,breaker_schedule)&select=key,value`,
+      { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
+    const rows = await r.json();
+    for (const row of (rows || [])){
+      let s = null;
+      try { s = JSON.parse(row.value); } catch(_) { s = null; }
+      if (!s || typeof s !== "object") continue;
+      const device = row.key === "easee_schedule" ? "easee" : "breaker";
+      schedState[device] = s;
+      renderSchedState(device);
+      // Only position the wheels once, on first load — otherwise the 30s poll
+      // would yank them out from under someone mid-scroll.
+      if (!schedWheelsSynced[device]){
+        const [sh,sm] = String(s.start || "01:00").split(":");
+        const [eh,em] = String(s.end   || "05:00").split(":");
+        setWheelTo(`${device}-start-h`, sh); setWheelTo(`${device}-start-m`, sm);
+        setWheelTo(`${device}-end-h`,   eh); setWheelTo(`${device}-end-m`,   em);
+        schedWheelsSynced[device] = true;
+      }
+    }
+  } catch(e){ console.error("schedules fetch failed", e); }
+}
+
+async function saveSchedule(device, body, okMsg){
+  const statusEl = document.getElementById(`${device}-sched-status`);
+  statusEl.className = "sched-status"; statusEl.textContent = "Saving…";
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.${SCHED_KEY[device]}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({ value: JSON.stringify(body) })
+    });
+    const rep = await res.json().catch(()=>null);
+    if (res.ok && Array.isArray(rep) && rep.length){
+      schedState[device] = body;
+      renderSchedState(device);
+      statusEl.className = "sched-status ok";
+      statusEl.textContent = `${okMsg} (Pi applies within ~30s)`;
+    } else {
+      statusEl.className = "sched-status err";
+      statusEl.textContent = res.ok ? "Save blocked — permission denied for this key" : `Save failed (HTTP ${res.status})`;
+    }
+  } catch(e){
+    statusEl.className = "sched-status err";
+    statusEl.textContent = "Network error: " + e.message;
+  }
+}
+
+async function armSchedule(device){
+  const start = `${wheelValue(`${device}-start-h`)}:${wheelValue(`${device}-start-m`)}`;
+  const end   = `${wheelValue(`${device}-end-h`)}:${wheelValue(`${device}-end-m`)}`;
+  const statusEl = document.getElementById(`${device}-sched-status`);
+  if (start === end){
+    statusEl.className = "sched-status err";
+    statusEl.textContent = "Start and end can't be the same time.";
+    return;
+  }
+  const name = device === "easee" ? "Easee" : "breaker";
+  await saveSchedule(device, { enabled:true, start, end, fired:false },
+    `Armed · ${name} forced ON at ${start}, back to Auto at ${end}`);
+}
+
+async function cancelSchedule(device){
+  const cur = schedState[device] || { start:"01:00", end:"05:00", fired:false };
+  await saveSchedule(device,
+    { enabled:false, start:cur.start, end:cur.end, fired:!!cur.fired },
+    "Schedule cancelled");
+}
+
 async function init(){
   await loadThreshold();
   await loadGreenForce();
   await loadOverrides();
+  initWheels();
+  await loadSchedules();
   await fetchData();
   loadFreeElectricity();
   loadLiveState();
@@ -969,6 +1245,7 @@ async function init(){
   setInterval(loadThreshold, 30_000);          // refresh threshold every 30s
   setInterval(loadGreenForce, 30_000);         // refresh green-force toggle every 30s
   setInterval(loadOverrides, 30_000);          // refresh per-device overrides every 30s
+  setInterval(loadSchedules, 30_000);          // refresh one-shot charge schedules every 30s
   setInterval(loadFreeElectricity, 60*60_000); // refresh free check hourly
   setInterval(loadLiveState, 15_000);          // refresh live charging state every 15s
 }
