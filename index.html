@@ -141,6 +141,7 @@
   /* Telemetry we know is NOT live (charger offline / Pi couldn't read it) is dimmed so
      frozen values can never read as a live measurement. */
   .charge-grid.stale{opacity:0.45}
+  .charge-metric.stale{opacity:0.45}
   .charge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px}
   .charge-metric{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
   .metric-label{font-size:11px;letter-spacing:0.18em;color:var(--text-very-dim);text-transform:uppercase;font-weight:600;margin-bottom:8px}
@@ -493,12 +494,12 @@
 
       <div id="tuya-faults" class="fault-banner unknown">Breaker health unknown</div>
       <div class="charge-grid">
-        <div class="charge-metric">
+        <div class="charge-metric" id="tuya-power-tile" hidden>
           <div class="metric-label">Live Power</div>
           <div class="metric-value big"><span id="tuya-kw">—</span><span class="unit">kW</span></div>
           <div class="metric-sub"><span id="tuya-volts">— V</span></div>
         </div>
-        <div class="charge-metric">
+        <div class="charge-metric" id="tuya-current-tile" hidden>
           <div class="metric-label">Current</div>
           <div class="metric-value big"><span id="tuya-amps">—</span><span class="unit">A</span></div>
           <div class="metric-sub">through the breaker</div>
@@ -598,7 +599,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 20:35";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-12 20:48";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
@@ -617,6 +618,7 @@ let currentGreenForce = null;        // null = unknown; bool when fetched
 let currentLivePrice = null;         // the actual half-hourly EDF rate the Pi sees; null until live_state arrives
 let lastData = null;
 let lastTuyaVoltage = null;          // remember most recent voltage we saw so we don't dash out
+let lastTuyaPhaseA  = null;          // last real V/A/kW frame from the breaker (phase_a is intermittent)
 
 function pad(n){ return String(n).padStart(2,"0"); }
 
@@ -1116,17 +1118,32 @@ async function loadLiveState(){
     } else {
       bm.className = "charge-mode-pill disconnected"; bm.textContent = "—";
     }
-    // The 1P breaker only emits phase_a (V/A/kW) when there's something to push.
-    // Strategy: when switch_on is true, treat missing V/A/kW as zero draw rather than "—",
-    // and remember the last voltage we saw so it persists through transient null frames.
+    // V/A/kW come from the breaker's phase_a (DPS 6), which in practice only arrives via
+    // Tuya cloud. With no cloud subscription they never do, so the tiles are hidden rather
+    // than showing a fabricated 0.000 kW - that would assert the PHEV is drawing nothing
+    // while it may be charging. They reappear by themselves if phase_a ever starts arriving.
     if (tuya.voltage != null) lastTuyaVoltage = tuya.voltage;
-    const breakerOn = tuya.switch_on === true;
-    const power_kw  = (tuya.power_kw  != null) ? tuya.power_kw  : (breakerOn ? 0 : null);
-    const current_a = (tuya.current_a != null) ? tuya.current_a : (breakerOn ? 0 : null);
-    const voltage   = (tuya.voltage   != null) ? tuya.voltage   : (breakerOn ? lastTuyaVoltage : null);
-    document.getElementById("tuya-kw").textContent     = fmtNum(power_kw, 3);
-    document.getElementById("tuya-volts").textContent  = (voltage != null ? fmtNum(voltage, 1) : "—") + " V";
-    document.getElementById("tuya-amps").textContent   = fmtNum(current_a, 2);
+    const freshPhaseA = (tuya.power_kw != null) || (tuya.current_a != null) || (tuya.voltage != null);
+    if (freshPhaseA){
+      lastTuyaPhaseA = { kw: tuya.power_kw, a: tuya.current_a,
+                         v: (tuya.voltage != null ? tuya.voltage : lastTuyaVoltage) };
+    }
+    const havePhaseA  = freshPhaseA || (lastTuyaPhaseA != null);
+    const powerTile   = document.getElementById("tuya-power-tile");
+    const currentTile = document.getElementById("tuya-current-tile");
+    if (powerTile)   powerTile.hidden   = !havePhaseA;
+    if (currentTile) currentTile.hidden = !havePhaseA;
+    if (havePhaseA){
+      const src = freshPhaseA
+        ? { kw: tuya.power_kw, a: tuya.current_a, v: (tuya.voltage != null ? tuya.voltage : lastTuyaVoltage) }
+        : lastTuyaPhaseA;
+      document.getElementById("tuya-kw").textContent    = fmtNum(src.kw, 3);
+      document.getElementById("tuya-volts").textContent = (src.v != null ? fmtNum(src.v, 1) : "—") + " V";
+      document.getElementById("tuya-amps").textContent  = fmtNum(src.a, 2);
+      // A skipped frame shows the last real reading, dimmed - never a fabricated zero.
+      if (powerTile)   powerTile.classList.toggle("stale", !freshPhaseA);
+      if (currentTile) currentTile.classList.toggle("stale", !freshPhaseA);
+    }
     document.getElementById("tuya-session").textContent  = fmtNum(tuya.session_kwh, 3);
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
 
