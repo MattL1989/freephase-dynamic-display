@@ -21,6 +21,10 @@
     --purple: #c084fc;
   }
   *{box-sizing:border-box}
+  /* An author `display` rule beats the UA stylesheet's [hidden]{display:none}, which
+     silently broke every el.hidden toggle (the PIN overlay stayed over the whole page
+     with no listeners attached). Keep this ABOVE the component rules. */
+  [hidden]{display:none!important}
   html,body{margin:0;padding:0;color:var(--text);min-height:100vh;
     background:radial-gradient(ellipse at top,#0a1228 0%,var(--bg) 60%);
     background-attachment:fixed;
@@ -591,7 +595,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 18:26";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-12 18:30";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
