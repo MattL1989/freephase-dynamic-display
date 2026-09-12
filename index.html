@@ -340,8 +340,8 @@
       <div class="now-side">
         <div class="charging-pill" id="charging-pill">Charging —</div>
         <div class="device-pills">
-          <div class="device-pill off" id="easee-mini">BEV · —</div>
-          <div class="device-pill off" id="tuya-mini">PHEV · —</div>
+          <div class="device-pill off" id="easee-mini">Easee One Charger · —</div>
+          <div class="device-pill off" id="tuya-mini">PHEV Charger · —</div>
           <div class="device-pill off" id="immersion-mini">Immersion · —</div>
         </div>
         <div class="next-band" id="next-band">—</div>
@@ -595,7 +595,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 18:36";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-12 20:30";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
@@ -1068,8 +1068,8 @@ async function loadLiveState(){
     pill.textContent = easee.op_mode_text || (easee.online === false ? "Offline" : "Loading…");
 
     // Mini status pills in the hero card
-    updateDeviceMiniPill("easee-mini",     "BEV",       easeeStatusFromLive(easee));
-    updateDeviceMiniPill("tuya-mini",      "PHEV",      tuyaStatusFromLive(tuya));
+    updateDeviceMiniPill("easee-mini",     "Easee One Charger", easeeStatusFromLive(easee));
+    updateDeviceMiniPill("tuya-mini",      "PHEV Charger",      tuyaStatusFromLive(tuya));
     updateDeviceMiniPill("immersion-mini", "Immersion", immersionStatusFromLive(imm));
 
     // Updated timestamp
