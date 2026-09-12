@@ -564,6 +564,7 @@
 
   <footer class="footer">
     EDF FreePhase Display by Matt Lewis · Auto-refreshes every minute
+    · <span id="build-stamp" style="opacity:.75"></span>
   </footer>
 </div>
 
@@ -581,6 +582,7 @@
   </div>
 </div>
 <script>
+const BUILD = "2026-09-12 18:21";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
@@ -609,6 +611,7 @@ function updateClock(){
   document.getElementById("clock").innerHTML = `<span class="time">${t}</span><span class="date">${d}</span>`;
 }
 setInterval(updateClock,1000); updateClock();
+{ const bs = document.getElementById("build-stamp"); if (bs) bs.textContent = "build " + BUILD; }
 
 function getSourcePrice(data, source){
   return data?.[source[0]]?.[source[1]]?.price ?? null;
@@ -778,15 +781,21 @@ let controlPin = null;
 try { controlPin = sessionStorage.getItem("fp_pin") || null; } catch(_) { controlPin = null; }
 
 async function rpc(fn, args){
+  // Hard timeout: a hung request must never leave the modal stuck on "Checking…"
+  const ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  const timer = ctl ? setTimeout(()=>{ try{ ctl.abort(); }catch(_){} }, 12000) : null;
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: { "Content-Type":"application/json", apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` },
-      body: JSON.stringify(args || {})
+      body: JSON.stringify(args || {}),
+      signal: ctl ? ctl.signal : undefined
     });
     let value = null; try { value = await res.json(); } catch(_) {}
     return { ok: res.ok, status: res.status, value };
-  } catch(e){ return { ok:false, status:0, value:null, error:e.message }; }
+  } catch(e){
+    return { ok:false, status:0, value:null, error:(e && e.name === "AbortError") ? "timeout" : (e && e.message) || "network" };
+  } finally { if (timer) clearTimeout(timer); }
 }
 
 // Modal that stays open until the submitted value is accepted (or cancelled), so a
@@ -810,7 +819,9 @@ function pinModal({ title, help, onSubmit }){
     let busy = false, done = false;
     function cleanup(){
       ok.removeEventListener("pointerdown", submit); ok.removeEventListener("click", submit);
+      ok.removeEventListener("touchend", submit);
       cancel.removeEventListener("pointerdown", onCancel); cancel.removeEventListener("click", onCancel);
+      cancel.removeEventListener("touchend", onCancel);
       inp.removeEventListener("keydown", onKey);
     }
     async function submit(e){
@@ -821,8 +832,8 @@ function pinModal({ title, help, onSubmit }){
       busy = true; ok.disabled = true; err.textContent = "Checking…";
       let res;
       try { res = await onSubmit(v); }
-      catch(ex){ res = { ok:false, error:"Network error: " + ex.message }; }
-      busy = false; ok.disabled = false;
+      catch(ex){ res = { ok:false, error:"Network error: " + ((ex && ex.message) || ex) }; }
+      finally { busy = false; ok.disabled = false; }
       if (res && res.ok){
         done = true; cleanup(); ov.hidden = true; resolve(v);
       } else {
@@ -840,7 +851,9 @@ function pinModal({ title, help, onSubmit }){
       else if (e.key === "Escape"){ onCancel(e); }
     }
     ok.addEventListener("pointerdown", submit); ok.addEventListener("click", submit);
+    ok.addEventListener("touchend", submit);
     cancel.addEventListener("pointerdown", onCancel); cancel.addEventListener("click", onCancel);
+    cancel.addEventListener("touchend", onCancel);
     inp.addEventListener("keydown", onKey);
   });
 }
