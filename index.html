@@ -138,6 +138,9 @@
   .charge-mode-pill.completed{color:#7aa9ff;border-color:rgba(122,169,255,0.4)}
   .charge-mode-pill.error{color:var(--red);border-color:rgba(255,58,90,0.4)}
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(30,229,96,0.5)}50%{box-shadow:0 0 0 8px rgba(30,229,96,0)}}
+  /* Telemetry we know is NOT live (charger offline / Pi couldn't read it) is dimmed so
+     frozen values can never read as a live measurement. */
+  .charge-grid.stale{opacity:0.45}
   .charge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px}
   .charge-metric{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
   .metric-label{font-size:11px;letter-spacing:0.18em;color:var(--text-very-dim);text-transform:uppercase;font-weight:600;margin-bottom:8px}
@@ -595,7 +598,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 20:30";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-12 20:35";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
@@ -1064,8 +1067,19 @@ async function loadLiveState(){
 
     // Mode pill
     const pill = document.getElementById("charge-mode");
-    pill.className = "charge-mode-pill " + modeClass(easee.op_mode);
-    pill.textContent = easee.op_mode_text || (easee.online === false ? "Offline" : "Loading…");
+    const easeeNoData  = (state.easee == null);          // Pi could not read the charger at all
+    const easeeOffline = (easee.online === false);       // charger is not reachable from Easee cloud
+    const easeeLive    = !easeeNoData && !easeeOffline;  // only then is the telemetry current
+    if (easeeNoData){
+      pill.className = "charge-mode-pill disconnected";
+      pill.textContent = "No data";
+    } else if (easeeOffline){
+      pill.className = "charge-mode-pill disconnected";
+      pill.textContent = easee.op_mode_text ? `Offline · last: ${easee.op_mode_text}` : "Offline";
+    } else {
+      pill.className = "charge-mode-pill " + modeClass(easee.op_mode);
+      pill.textContent = easee.op_mode_text || "Loading…";
+    }
 
     // Mini status pills in the hero card
     updateDeviceMiniPill("easee-mini",     "Easee One Charger", easeeStatusFromLive(easee));
@@ -1079,13 +1093,16 @@ async function loadLiveState(){
         "Updated " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
     }
 
-    // Easee metrics
-    document.getElementById("live-kw").textContent = fmtNum(easee.total_power_kw, 3);
-    document.getElementById("live-volts").textContent = fmtNum(easee.voltage, 1) + " V";
-    document.getElementById("live-amps").textContent = fmtNum(easee.output_current_a, 2);
+    // Easee metrics. When the charger isn't live these are last-known, not measurements,
+    // so the instantaneous ones are blanked and the whole grid is dimmed.
+    const easeeGrid = document.querySelector("#charge-panel .charge-section .charge-grid");
+    if (easeeGrid) easeeGrid.classList.toggle("stale", !easeeLive);
+    document.getElementById("live-kw").textContent    = easeeLive ? fmtNum(easee.total_power_kw, 3) : "—";
+    document.getElementById("live-volts").textContent = easeeLive ? (fmtNum(easee.voltage, 1) + " V") : "— V";
+    document.getElementById("live-amps").textContent  = easeeLive ? fmtNum(easee.output_current_a, 2) : "—";
     const t2 = fmtNum(easee.current_t2_a, 2), t3 = fmtNum(easee.current_t3_a, 2);
-    document.getElementById("live-amps-detail").textContent = `T2 ${t2} A · T3 ${t3} A`;
-    document.getElementById("live-session").textContent = fmtNum(easee.session_kwh, 2);
+    document.getElementById("live-amps-detail").textContent = easeeLive ? `T2 ${t2} A · T3 ${t3} A` : "not reporting";
+    document.getElementById("live-session").textContent  = fmtNum(easee.session_kwh, 2);
     document.getElementById("live-lifetime").textContent = fmtNum(easee.lifetime_kwh, 1);
 
     // Tuya breaker section
