@@ -269,6 +269,26 @@
     .override-status{text-align:left}
   }
 
+  /* PIN MODAL */
+  .pin-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+    background:rgba(3,6,14,0.72);backdrop-filter:blur(4px);padding:20px}
+  .pin-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);
+    border-radius:20px;padding:26px 24px;box-shadow:0 24px 60px rgba(0,0,0,0.5)}
+  .pin-title{font-size:18px;font-weight:800;letter-spacing:0.02em;margin-bottom:8px}
+  .pin-help{font-size:13px;color:var(--text-dim);line-height:1.5;margin-bottom:16px}
+  .pin-input{width:100%;padding:15px 16px;font-size:24px;font-weight:700;text-align:center;letter-spacing:0.3em;
+    background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:14px;
+    font-variant-numeric:tabular-nums}
+  .pin-input:focus{outline:2px solid var(--cyan);outline-offset:1px}
+  .pin-err{min-height:16px;margin-top:10px;font-size:13px;color:var(--red);font-weight:600}
+  .pin-actions{display:flex;gap:10px;margin-top:16px}
+  .pin-btn{flex:1;padding:14px;font-size:15px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    border:none;border-radius:12px;cursor:pointer}
+  .pin-btn.ok{background:var(--cyan);color:var(--bg)}
+  .pin-btn.ok:hover{filter:brightness(1.08)}
+  .pin-btn.cancel{background:transparent;color:var(--text-dim);border:1px solid var(--border)}
+  .pin-btn.cancel:hover{color:var(--text)}
+
   .footer{margin:56px 0 24px;color:var(--text-very-dim);font-size:12px;text-align:center}
 
   @media (max-width:720px){
@@ -545,6 +565,19 @@
     EDF FreePhase Display by Matt Lewis · Auto-refreshes every minute
   </footer>
 </div>
+
+<div id="pin-overlay" class="pin-overlay" hidden>
+  <div class="pin-box" role="dialog" aria-modal="true" aria-labelledby="pin-title">
+    <div class="pin-title" id="pin-title">Enter dashboard PIN</div>
+    <div class="pin-help" id="pin-help"></div>
+    <input id="pin-input" class="pin-input" type="password" inputmode="numeric" autocomplete="off" aria-label="PIN" placeholder="••••">
+    <div class="pin-err" id="pin-err"></div>
+    <div class="pin-actions">
+      <button type="button" class="pin-btn cancel" id="pin-cancel">Cancel</button>
+      <button type="button" class="pin-btn ok" id="pin-ok">OK</button>
+    </div>
+  </div>
+</div>
 <script>
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
@@ -732,33 +765,108 @@ async function loadThreshold(){
   if (lastData) renderNow(lastData);
 }
 
+// ------------------------------------------------------------------
+// PIN-GATED CONTROL WRITES
+// Every control change goes through the Supabase RPC set_control(pin,key,value),
+// which verifies a server-side bcrypt-hashed PIN. The anon key alone can no longer
+// write the control settings (direct UPDATE policies were removed), so the page
+// stays viewable by anyone but changing anything requires the PIN.
+// ------------------------------------------------------------------
+let controlPin = null;
+try { controlPin = sessionStorage.getItem("fp_pin") || null; } catch(_) { controlPin = null; }
+
+async function rpc(fn, args){
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { "Content-Type":"application/json", apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` },
+      body: JSON.stringify(args || {})
+    });
+    let value = null; try { value = await res.json(); } catch(_) {}
+    return { ok: res.ok, status: res.status, value };
+  } catch(e){ return { ok:false, status:0, value:null, error:e.message }; }
+}
+
+function askPin(mode, errMsg){
+  return new Promise(resolve => {
+    const ov = document.getElementById("pin-overlay");
+    const inp = document.getElementById("pin-input");
+    const err = document.getElementById("pin-err");
+    document.getElementById("pin-title").textContent = mode==="create" ? "Create a dashboard PIN" : "Enter dashboard PIN";
+    document.getElementById("pin-help").textContent = mode==="create"
+      ? "Set a PIN (at least 4 digits) to protect the charger controls. You'll need it whenever you change something."
+      : "Enter your PIN to change the controls.";
+    err.textContent = errMsg || "";
+    inp.value = ""; ov.hidden = false;
+    setTimeout(()=>{ try{ inp.focus(); }catch(_){} }, 60);
+    const ok = document.getElementById("pin-ok"), cancel = document.getElementById("pin-cancel");
+    function finish(v){ ov.hidden=true; ok.removeEventListener("click",onOk); cancel.removeEventListener("click",onCancel); inp.removeEventListener("keydown",onKey); resolve(v); }
+    function onOk(){ const v=inp.value.trim(); if(!v){ err.textContent="Please enter a PIN."; return; } finish(v); }
+    function onCancel(){ finish(null); }
+    function onKey(e){ if(e.key==="Enter"){ e.preventDefault(); onOk(); } else if(e.key==="Escape"){ e.preventDefault(); onCancel(); } }
+    ok.addEventListener("click",onOk); cancel.addEventListener("click",onCancel); inp.addEventListener("keydown",onKey);
+  });
+}
+
+async function ensurePin(){
+  if (controlPin) return true;
+  const chk = await rpc("is_pin_set", {});
+  const isSet = (chk.value === true);
+  if (!isSet){
+    let err = "";
+    while (true){
+      const p = await askPin("create", err);
+      if (p == null) return false;
+      const r = await rpc("set_control_pin", { p_new_pin:p, p_current_pin:null });
+      if (r.value === "ok"){ controlPin=p; try{ sessionStorage.setItem("fp_pin",p); }catch(_){}; return true; }
+      err = (r.value === "too_short") ? "PIN must be 4–64 characters." : "Couldn't set the PIN — try again.";
+    }
+  }
+  const p = await askPin("enter", "");
+  if (p == null) return false;
+  controlPin = p; try{ sessionStorage.setItem("fp_pin",p); }catch(_){}
+  return true;
+}
+
+async function writeControl(key, value){
+  if (!(await ensurePin())) return { ok:false, reason:"cancelled" };
+  let r = await rpc("set_control", { p_pin:controlPin, p_key:key, p_value:value });
+  if (r.value === "bad_pin"){
+    controlPin = null; try{ sessionStorage.removeItem("fp_pin"); }catch(_){}
+    const p = await askPin("enter", "That PIN was wrong — try again.");
+    if (p == null) return { ok:false, reason:"cancelled" };
+    controlPin = p; try{ sessionStorage.setItem("fp_pin",p); }catch(_){}
+    r = await rpc("set_control", { p_pin:controlPin, p_key:key, p_value:value });
+    if (r.value === "bad_pin"){ controlPin=null; try{ sessionStorage.removeItem("fp_pin"); }catch(_){}; return { ok:false, reason:"bad_pin" }; }
+  }
+  if (r.value === "ok") return { ok:true };
+  return { ok:false, reason: (typeof r.value === "string" ? r.value : `http_${r.status}`) };
+}
+
+function reasonText(reason){
+  switch(reason){
+    case "cancelled":   return "Cancelled — PIN required to change controls";
+    case "bad_pin":     return "Wrong PIN — not saved";
+    case "pin_not_set": return "No PIN set yet";
+    case "bad_key":     return "Not allowed";
+    default:            return "Save failed (" + reason + ")";
+  }
+}
+
 async function updateThreshold(){
   const raw = document.getElementById("new-threshold").value;
   if (!raw){ return; }
   const status = document.getElementById("threshold-status");
   status.className = "threshold-status"; status.textContent = "Saving…";
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.threshold`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify({ value: raw })
-    });
-    if (res.ok){
-      currentThreshold = parseFloat(raw);
-      document.getElementById("current-threshold").textContent = currentThreshold.toFixed(2);
-      document.getElementById("new-threshold").value = "";
-      status.className = "threshold-status ok"; status.textContent = `Saved · threshold set to ${currentThreshold.toFixed(2)}p`;
-      if (lastData) renderNow(lastData);
-    } else {
-      status.className = "threshold-status err"; status.textContent = `Save failed (HTTP ${res.status})`;
-    }
-  } catch(e){
-    status.className = "threshold-status err"; status.textContent = "Network error: " + e.message;
+  const r = await writeControl("threshold", raw);
+  if (r.ok){
+    currentThreshold = parseFloat(raw);
+    document.getElementById("current-threshold").textContent = currentThreshold.toFixed(2);
+    document.getElementById("new-threshold").value = "";
+    status.className = "threshold-status ok"; status.textContent = `Saved · threshold set to ${currentThreshold.toFixed(2)}p`;
+    if (lastData) renderNow(lastData);
+  } else {
+    status.className = "threshold-status err"; status.textContent = reasonText(r.reason);
   }
 }
 
@@ -961,33 +1069,17 @@ async function loadGreenForce(){
 
 async function updateGreenForce(checked){
   const status = document.getElementById("green-force-status");
-  status.className = "toggle-status";
-  status.textContent = "Saving…";
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.green_force`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify({ value: checked ? "true" : "false" })
-    });
-    if (res.ok){
-      currentGreenForce = checked;
-      status.className = "toggle-status ok";
-      status.textContent = checked
-        ? "Saved · auto-charge during green window enabled"
-        : "Saved · green window will use threshold logic (Pi picks up within 2 min)";
-    } else {
-      status.className = "toggle-status err";
-      status.textContent = `Save failed (HTTP ${res.status})`;
-      document.getElementById("green-force-toggle").checked = !!currentGreenForce;
-    }
-  } catch(e){
+  status.className = "toggle-status"; status.textContent = "Saving…";
+  const r = await writeControl("green_force", checked ? "true" : "false");
+  if (r.ok){
+    currentGreenForce = checked;
+    status.className = "toggle-status ok";
+    status.textContent = checked
+      ? "Saved · auto-charge during green window enabled"
+      : "Saved · green window will use threshold logic (Pi picks up within 2 min)";
+  } else {
     status.className = "toggle-status err";
-    status.textContent = "Network error: " + e.message;
+    status.textContent = reasonText(r.reason);
     document.getElementById("green-force-toggle").checked = !!currentGreenForce;
   }
 }
@@ -1037,34 +1129,18 @@ async function setOverride(device, mode){
   paintOverride(device, mode);                    // optimistic highlight
   statusEl.className = "override-status"; statusEl.textContent = "Saving…";
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.${OVERRIDE_KEY[device]}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify({ value: mode })
-    });
-    // return=representation yields [] if RLS silently filtered the update to 0 rows,
-    // so we treat an empty body as a permissions failure rather than a false success.
-    const body = await res.json().catch(() => null);
     const name = device === "easee" ? "Easee" : "breaker";
-    if (res.ok && Array.isArray(body) && body.length){
+    const r = await writeControl(OVERRIDE_KEY[device], mode);
+    if (r.ok){
       if (device === "easee") currentEaseeOverride = mode; else currentBreakerOverride = mode;
       const label = mode === "auto" ? "following price automation" : (mode === "on" ? "forced ON" : "forced OFF");
       statusEl.className = "override-status ok";
       statusEl.textContent = `Saved · ${name} ${label} (Pi applies within ~30s)`;
     } else {
       statusEl.className = "override-status err";
-      statusEl.textContent = res.ok ? "Save blocked — permission denied for this key" : `Save failed (HTTP ${res.status})`;
+      statusEl.textContent = reasonText(r.reason);
       paintOverride(device, currentOverride(device));
     }
-  } catch(e){
-    statusEl.className = "override-status err";
-    statusEl.textContent = "Network error: " + e.message;
-    paintOverride(device, currentOverride(device));
   } finally {
     setTimeout(() => { overrideBusy[device] = false; }, 1500);
   }
@@ -1184,30 +1260,15 @@ async function loadSchedules(){
 async function saveSchedule(device, body, okMsg){
   const statusEl = document.getElementById(`${device}-sched-status`);
   statusEl.className = "sched-status"; statusEl.textContent = "Saving…";
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.${SCHED_KEY[device]}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify({ value: JSON.stringify(body) })
-    });
-    const rep = await res.json().catch(()=>null);
-    if (res.ok && Array.isArray(rep) && rep.length){
-      schedState[device] = body;
-      renderSchedState(device);
-      statusEl.className = "sched-status ok";
-      statusEl.textContent = `${okMsg} (Pi applies within ~30s)`;
-    } else {
-      statusEl.className = "sched-status err";
-      statusEl.textContent = res.ok ? "Save blocked — permission denied for this key" : `Save failed (HTTP ${res.status})`;
-    }
-  } catch(e){
+  const r = await writeControl(SCHED_KEY[device], JSON.stringify(body));
+  if (r.ok){
+    schedState[device] = body;
+    renderSchedState(device);
+    statusEl.className = "sched-status ok";
+    statusEl.textContent = `${okMsg} (Pi applies within ~30s)`;
+  } else {
     statusEl.className = "sched-status err";
-    statusEl.textContent = "Network error: " + e.message;
+    statusEl.textContent = reasonText(r.reason);
   }
 }
 
