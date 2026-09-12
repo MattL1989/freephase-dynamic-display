@@ -789,59 +789,103 @@ async function rpc(fn, args){
   } catch(e){ return { ok:false, status:0, value:null, error:e.message }; }
 }
 
-function askPin(mode, errMsg){
+// Modal that stays open until the submitted value is accepted (or cancelled), so a
+// failure is always visible here rather than in a status line that may be off-screen.
+// IMPORTANT: buttons listen on pointerdown AND click. On touch devices the first tap
+// on a button while the text input is focused is otherwise consumed by the blur /
+// keyboard dismissal, so the click never lands and the PIN appears to do nothing.
+function pinModal({ title, help, onSubmit }){
   return new Promise(resolve => {
     const ov = document.getElementById("pin-overlay");
     const inp = document.getElementById("pin-input");
     const err = document.getElementById("pin-err");
-    document.getElementById("pin-title").textContent = mode==="create" ? "Create a dashboard PIN" : "Enter dashboard PIN";
-    document.getElementById("pin-help").textContent = mode==="create"
-      ? "Set a PIN (at least 4 digits) to protect the charger controls. You'll need it whenever you change something."
-      : "Enter your PIN to change the controls.";
-    err.textContent = errMsg || "";
+    const ok = document.getElementById("pin-ok");
+    const cancel = document.getElementById("pin-cancel");
+    document.getElementById("pin-title").textContent = title;
+    document.getElementById("pin-help").textContent = help;
+    err.textContent = "";
     inp.value = ""; ov.hidden = false;
-    // clear twice: iOS can re-populate the field just after it becomes visible
     setTimeout(()=>{ try{ inp.value=""; inp.focus(); }catch(_){} }, 60);
-    setTimeout(()=>{ try{ if(document.activeElement!==inp) inp.value=""; }catch(_){} }, 400);
-    const ok = document.getElementById("pin-ok"), cancel = document.getElementById("pin-cancel");
-    function finish(v){ ov.hidden=true; ok.removeEventListener("click",onOk); cancel.removeEventListener("click",onCancel); inp.removeEventListener("keydown",onKey); resolve(v); }
-    function onOk(){ const v=inp.value.trim(); if(!v){ err.textContent="Please enter a PIN."; return; } finish(v); }
-    function onCancel(){ finish(null); }
-    function onKey(e){ if(e.key==="Enter"){ e.preventDefault(); onOk(); } else if(e.key==="Escape"){ e.preventDefault(); onCancel(); } }
-    ok.addEventListener("click",onOk); cancel.addEventListener("click",onCancel); inp.addEventListener("keydown",onKey);
+
+    let busy = false, done = false;
+    function cleanup(){
+      ok.removeEventListener("pointerdown", submit); ok.removeEventListener("click", submit);
+      cancel.removeEventListener("pointerdown", onCancel); cancel.removeEventListener("click", onCancel);
+      inp.removeEventListener("keydown", onKey);
+    }
+    async function submit(e){
+      if (e){ e.preventDefault(); e.stopPropagation(); }
+      if (busy || done) return;
+      const v = inp.value.trim();
+      if (!v){ err.textContent = "Please enter a PIN."; return; }
+      busy = true; ok.disabled = true; err.textContent = "Checking…";
+      let res;
+      try { res = await onSubmit(v); }
+      catch(ex){ res = { ok:false, error:"Network error: " + ex.message }; }
+      busy = false; ok.disabled = false;
+      if (res && res.ok){
+        done = true; cleanup(); ov.hidden = true; resolve(v);
+      } else {
+        err.textContent = (res && res.error) || "That didn't work — try again.";
+        inp.value = ""; try{ inp.focus(); }catch(_){}
+      }
+    }
+    function onCancel(e){
+      if (e){ e.preventDefault(); e.stopPropagation(); }
+      if (done) return;
+      done = true; cleanup(); ov.hidden = true; resolve(null);
+    }
+    function onKey(e){
+      if (e.key === "Enter"){ submit(e); }
+      else if (e.key === "Escape"){ onCancel(e); }
+    }
+    ok.addEventListener("pointerdown", submit); ok.addEventListener("click", submit);
+    cancel.addEventListener("pointerdown", onCancel); cancel.addEventListener("click", onCancel);
+    inp.addEventListener("keydown", onKey);
   });
 }
 
+function cachePin(p){ controlPin = p; try{ sessionStorage.setItem("fp_pin", p); }catch(_){} }
+function forgetPin(){ controlPin = null; try{ sessionStorage.removeItem("fp_pin"); }catch(_){} }
+
 async function ensurePin(){
   if (controlPin) return true;
-  const chk = await rpc("is_pin_set", {});
-  const isSet = (chk.value === true);
+  const isSet = ((await rpc("is_pin_set", {})).value === true);
   if (!isSet){
-    let err = "";
-    while (true){
-      const p = await askPin("create", err);
-      if (p == null) return false;
-      const r = await rpc("set_control_pin", { p_new_pin:p, p_current_pin:null });
-      if (r.value === "ok"){ controlPin=p; try{ sessionStorage.setItem("fp_pin",p); }catch(_){}; return true; }
-      err = (r.value === "too_short") ? "PIN must be 4–64 characters." : "Couldn't set the PIN — try again.";
-    }
+    const v = await pinModal({
+      title: "Create a dashboard PIN",
+      help:  "Set a PIN (at least 4 digits) to protect the charger controls. You'll need it whenever you change something.",
+      onSubmit: async (pin) => {
+        const r = await rpc("set_control_pin", { p_new_pin: pin, p_current_pin: null });
+        if (r.value === "ok") return { ok:true };
+        if (r.value === "too_short") return { ok:false, error:"PIN must be at least 4 digits." };
+        return { ok:false, error:"Couldn't set the PIN — try again." };
+      }
+    });
+    if (v == null) return false;
+    cachePin(v); return true;
   }
-  const p = await askPin("enter", "");
-  if (p == null) return false;
-  controlPin = p; try{ sessionStorage.setItem("fp_pin",p); }catch(_){}
-  return true;
+  const v = await pinModal({
+    title: "Enter dashboard PIN",
+    help:  "Enter your PIN to change the controls.",
+    onSubmit: async (pin) => {
+      const r = await rpc("verify_pin", { p_pin: pin });
+      if (r.value === true) return { ok:true };
+      if (r.ok) return { ok:false, error:"Wrong PIN — try again." };
+      return { ok:false, error:"Couldn't reach the server — check your connection." };
+    }
+  });
+  if (v == null) return false;
+  cachePin(v); return true;
 }
 
 async function writeControl(key, value){
   if (!(await ensurePin())) return { ok:false, reason:"cancelled" };
-  let r = await rpc("set_control", { p_pin:controlPin, p_key:key, p_value:value });
-  if (r.value === "bad_pin"){
-    controlPin = null; try{ sessionStorage.removeItem("fp_pin"); }catch(_){}
-    const p = await askPin("enter", "That PIN was wrong — try again.");
-    if (p == null) return { ok:false, reason:"cancelled" };
-    controlPin = p; try{ sessionStorage.setItem("fp_pin",p); }catch(_){}
-    r = await rpc("set_control", { p_pin:controlPin, p_key:key, p_value:value });
-    if (r.value === "bad_pin"){ controlPin=null; try{ sessionStorage.removeItem("fp_pin"); }catch(_){}; return { ok:false, reason:"bad_pin" }; }
+  let r = await rpc("set_control", { p_pin: controlPin, p_key: key, p_value: value });
+  if (r.value === "bad_pin"){          // PIN changed server-side since we cached it
+    forgetPin();
+    if (!(await ensurePin())) return { ok:false, reason:"cancelled" };
+    r = await rpc("set_control", { p_pin: controlPin, p_key: key, p_value: value });
   }
   if (r.value === "ok") return { ok:true };
   return { ok:false, reason: (typeof r.value === "string" ? r.value : `http_${r.status}`) };
