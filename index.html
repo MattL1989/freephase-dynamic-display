@@ -277,6 +277,7 @@
   .pin-title{font-size:18px;font-weight:800;letter-spacing:0.02em;margin-bottom:8px}
   .pin-help{font-size:13px;color:var(--text-dim);line-height:1.5;margin-bottom:16px}
   .pin-input{width:100%;padding:15px 16px;font-size:24px;font-weight:700;text-align:center;letter-spacing:0.3em;
+    -webkit-text-security:disc;text-security:disc;
     background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:14px;
     font-variant-numeric:tabular-nums}
   .pin-input:focus{outline:2px solid var(--cyan);outline-offset:1px}
@@ -329,8 +330,8 @@
       <div class="now-side">
         <div class="charging-pill" id="charging-pill">Charging —</div>
         <div class="device-pills">
-          <div class="device-pill off" id="easee-mini">Easee · —</div>
-          <div class="device-pill off" id="tuya-mini">Tuya · —</div>
+          <div class="device-pill off" id="easee-mini">BEV · —</div>
+          <div class="device-pill off" id="tuya-mini">PHEV · —</div>
           <div class="device-pill off" id="immersion-mini">Immersion · —</div>
         </div>
         <div class="next-band" id="next-band">—</div>
@@ -362,10 +363,10 @@
     <!-- EASEE 7 kW -->
     <div class="charge-section">
       <div class="charge-section-head">
-        <div class="charge-section-title">Easee <span class="charge-cap">7 kW smart charger</span></div>
+        <div class="charge-section-title">Easee — BEV <span class="charge-cap">7 kW · 32 A smart charger</span></div>
         <div class="section-controls">
           <div id="charge-mode" class="charge-mode-pill disconnected">Loading…</div>
-          <div class="override-control" id="easee-override" role="group" aria-label="Easee manual control">
+          <div class="override-control" id="easee-override" role="group" aria-label="BEV charger manual control">
             <button type="button" data-mode="auto" onclick="setOverride('easee','auto')">Auto</button>
             <button type="button" data-mode="on"   onclick="setOverride('easee','on')">On</button>
             <button type="button" data-mode="off"  onclick="setOverride('easee','off')">Off</button>
@@ -377,7 +378,7 @@
       <div class="sched" id="easee-sched">
         <div class="sched-head">
           <div class="sched-title">Scheduled charge
-            <span class="sched-hint">One-shot · forces the Easee ON for the window, then hands back to Auto</span>
+            <span class="sched-hint">One-shot · forces the BEV charger ON for the window, then hands back to Auto</span>
           </div>
           <div class="sched-state" id="easee-sched-state">Off</div>
         </div>
@@ -425,7 +426,7 @@
         <div class="charge-metric">
           <div class="metric-label">Lifetime</div>
           <div class="metric-value"><span id="live-lifetime">—</span><span class="unit">kWh</span></div>
-          <div class="metric-sub">Easee total</div>
+          <div class="metric-sub">BEV charger total</div>
         </div>
       </div>
     </div>
@@ -433,10 +434,10 @@
     <!-- TUYA 3.7 kW BREAKER -->
     <div class="charge-section">
       <div class="charge-section-head">
-        <div class="charge-section-title">Tuya Breaker <span class="charge-cap">3.7 kW upstream relay</span></div>
+        <div class="charge-section-title">PHEV Charger <span class="charge-cap">3.7 kW · 16 A · via Tuya breaker</span></div>
         <div class="section-controls">
           <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
-          <div class="override-control" id="breaker-override" role="group" aria-label="Breaker manual control">
+          <div class="override-control" id="breaker-override" role="group" aria-label="PHEV charger manual control">
             <button type="button" data-mode="auto" onclick="setOverride('breaker','auto')">Auto</button>
             <button type="button" data-mode="on"   onclick="setOverride('breaker','on')">On</button>
             <button type="button" data-mode="off"  onclick="setOverride('breaker','off')">Off</button>
@@ -448,7 +449,7 @@
       <div class="sched" id="breaker-sched">
         <div class="sched-head">
           <div class="sched-title">Scheduled charge
-            <span class="sched-hint">One-shot · forces the breaker ON for the window, then hands back to Auto</span>
+            <span class="sched-hint">One-shot · forces the PHEV charger ON for the window, then hands back to Auto</span>
           </div>
           <div class="sched-state" id="breaker-sched-state">Off</div>
         </div>
@@ -497,7 +498,7 @@
         <div class="charge-metric">
           <div class="metric-label">Lifetime</div>
           <div class="metric-value"><span id="tuya-lifetime">—</span><span class="unit">kWh</span></div>
-          <div class="metric-sub">Tuya total</div>
+          <div class="metric-sub">PHEV charger total</div>
         </div>
       </div>
     </div>
@@ -570,7 +571,8 @@
   <div class="pin-box" role="dialog" aria-modal="true" aria-labelledby="pin-title">
     <div class="pin-title" id="pin-title">Enter dashboard PIN</div>
     <div class="pin-help" id="pin-help"></div>
-    <input id="pin-input" class="pin-input" type="password" inputmode="numeric" autocomplete="off" aria-label="PIN" placeholder="••••">
+    <input id="pin-input" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*"
+           autocomplete="off" name="fp-control-pin" aria-label="PIN" placeholder="••••">
     <div class="pin-err" id="pin-err"></div>
     <div class="pin-actions">
       <button type="button" class="pin-btn cancel" id="pin-cancel">Cancel</button>
@@ -798,7 +800,9 @@ function askPin(mode, errMsg){
       : "Enter your PIN to change the controls.";
     err.textContent = errMsg || "";
     inp.value = ""; ov.hidden = false;
-    setTimeout(()=>{ try{ inp.focus(); }catch(_){} }, 60);
+    // clear twice: iOS can re-populate the field just after it becomes visible
+    setTimeout(()=>{ try{ inp.value=""; inp.focus(); }catch(_){} }, 60);
+    setTimeout(()=>{ try{ if(document.activeElement!==inp) inp.value=""; }catch(_){} }, 400);
     const ok = document.getElementById("pin-ok"), cancel = document.getElementById("pin-cancel");
     function finish(v){ ov.hidden=true; ok.removeEventListener("click",onOk); cancel.removeEventListener("click",onCancel); inp.removeEventListener("keydown",onKey); resolve(v); }
     function onOk(){ const v=inp.value.trim(); if(!v){ err.textContent="Please enter a PIN."; return; } finish(v); }
@@ -963,8 +967,8 @@ async function loadLiveState(){
     pill.textContent = easee.op_mode_text || (easee.online === false ? "Offline" : "Loading…");
 
     // Mini status pills in the hero card
-    updateDeviceMiniPill("easee-mini",     "Easee",     easeeStatusFromLive(easee));
-    updateDeviceMiniPill("tuya-mini",      "Tuya",      tuyaStatusFromLive(tuya));
+    updateDeviceMiniPill("easee-mini",     "BEV",       easeeStatusFromLive(easee));
+    updateDeviceMiniPill("tuya-mini",      "PHEV",      tuyaStatusFromLive(tuya));
     updateDeviceMiniPill("immersion-mini", "Immersion", immersionStatusFromLive(imm));
 
     // Updated timestamp
@@ -1129,7 +1133,7 @@ async function setOverride(device, mode){
   paintOverride(device, mode);                    // optimistic highlight
   statusEl.className = "override-status"; statusEl.textContent = "Saving…";
   try {
-    const name = device === "easee" ? "Easee" : "breaker";
+    const name = device === "easee" ? "BEV charger" : "PHEV charger";
     const r = await writeControl(OVERRIDE_KEY[device], mode);
     if (r.ok){
       if (device === "easee") currentEaseeOverride = mode; else currentBreakerOverride = mode;
@@ -1281,7 +1285,7 @@ async function armSchedule(device){
     statusEl.textContent = "Start and end can't be the same time.";
     return;
   }
-  const name = device === "easee" ? "Easee" : "breaker";
+  const name = device === "easee" ? "BEV charger" : "PHEV charger";
   await saveSchedule(device, { enabled:true, start, end, fired:false },
     `Armed · ${name} forced ON at ${start}, back to Auto at ${end}`);
 }
