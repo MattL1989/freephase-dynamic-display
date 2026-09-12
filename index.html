@@ -599,7 +599,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 20:48";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-12 20:57";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
@@ -815,7 +815,8 @@ async function loadThreshold(){
     currentThreshold = data.length ? parseFloat(data[0].value) : null;
   } catch(e){ console.error(e); currentThreshold = null; }
   document.getElementById("current-threshold").textContent = currentThreshold != null ? currentThreshold.toFixed(2) : "—";
-  document.getElementById("new-threshold").value = "";
+  // Do NOT clear #new-threshold here: this runs every 30s and used to erase whatever the
+  // user was part-way through typing. updateThreshold() clears it after a successful save.
   if (lastData) renderNow(lastData);
 }
 
@@ -827,6 +828,7 @@ async function loadThreshold(){
 // stays viewable by anyone but changing anything requires the PIN.
 // ------------------------------------------------------------------
 let controlPin = null;
+let pinLookupFailed = false;   // set when is_pin_set() could not be reached
 try { controlPin = sessionStorage.getItem("fp_pin") || null; } catch(_) { controlPin = null; }
 
 async function rpc(fn, args){
@@ -852,7 +854,12 @@ async function rpc(fn, args){
 // IMPORTANT: buttons listen on pointerdown AND click. On touch devices the first tap
 // on a button while the text input is focused is otherwise consumed by the blur /
 // keyboard dismissal, so the click never lands and the PIN appears to do nothing.
+let pinModalOpen = false;
 function pinModal({ title, help, onSubmit }){
+  // One modal, one shared DOM. A second concurrent open would hijack the first one's
+  // elements, so refuse it and let that caller report a cancel.
+  if (pinModalOpen) return Promise.resolve(null);
+  pinModalOpen = true;
   return new Promise(resolve => {
     const ov = document.getElementById("pin-overlay");
     const inp = document.getElementById("pin-input");
@@ -862,17 +869,21 @@ function pinModal({ title, help, onSubmit }){
     document.getElementById("pin-title").textContent = title;
     document.getElementById("pin-help").textContent = help;
     err.textContent = "";
+    ok.disabled = false;            // a previous run may have left it disabled mid-check
     inp.value = ""; ov.hidden = false;
     setTimeout(()=>{ try{ inp.value=""; inp.focus(); }catch(_){} }, 60);
 
     let busy = false, done = false;
     function cleanup(){
-      ok.removeEventListener("pointerdown", submit); ok.removeEventListener("click", submit);
-      ok.removeEventListener("touchend", submit);
-      cancel.removeEventListener("pointerdown", onCancel); cancel.removeEventListener("click", onCancel);
-      cancel.removeEventListener("touchend", onCancel);
+      ok.removeEventListener("pointerdown", swallowDefault); ok.removeEventListener("click", submit);
+      cancel.removeEventListener("pointerdown", swallowDefault); cancel.removeEventListener("click", onCancel);
       inp.removeEventListener("keydown", onKey);
+      pinModalOpen = false;
     }
+    // pointerdown ONLY suppresses the default (focus change), so a focused PIN field can't
+    // swallow the first tap. It must NOT act: hiding the overlay while the finger is still
+    // down lets the trailing tap fall through and activate whatever control is underneath.
+    function swallowDefault(e){ if (e) e.preventDefault(); }
     async function submit(e){
       if (e){ e.preventDefault(); e.stopPropagation(); }
       if (busy || done) return;
@@ -882,7 +893,11 @@ function pinModal({ title, help, onSubmit }){
       let res;
       try { res = await onSubmit(v); }
       catch(ex){ res = { ok:false, error:"Network error: " + ((ex && ex.message) || ex) }; }
-      finally { busy = false; ok.disabled = false; }
+      finally { busy = false; }
+      // Cancelled (or otherwise finished) while the check was in flight: the modal DOM now
+      // belongs to someone else, so touch nothing and let the earlier resolve stand.
+      if (done) return;
+      ok.disabled = false;
       if (res && res.ok){
         done = true; cleanup(); ov.hidden = true; resolve(v);
       } else {
@@ -899,10 +914,8 @@ function pinModal({ title, help, onSubmit }){
       if (e.key === "Enter"){ submit(e); }
       else if (e.key === "Escape"){ onCancel(e); }
     }
-    ok.addEventListener("pointerdown", submit); ok.addEventListener("click", submit);
-    ok.addEventListener("touchend", submit);
-    cancel.addEventListener("pointerdown", onCancel); cancel.addEventListener("click", onCancel);
-    cancel.addEventListener("touchend", onCancel);
+    ok.addEventListener("pointerdown", swallowDefault); ok.addEventListener("click", submit);
+    cancel.addEventListener("pointerdown", swallowDefault); cancel.addEventListener("click", onCancel);
     inp.addEventListener("keydown", onKey);
   });
 }
@@ -912,8 +925,15 @@ function forgetPin(){ controlPin = null; try{ sessionStorage.removeItem("fp_pin"
 
 async function ensurePin(){
   if (controlPin) return true;
-  const isSet = ((await rpc("is_pin_set", {})).value === true);
-  if (!isSet){
+  const chk = await rpc("is_pin_set", {});
+  if (!chk.ok || typeof chk.value !== "boolean"){
+    // A failed lookup is NOT "no PIN set" - treating it as such trapped the user in a
+    // create-PIN dialog that could never succeed.
+    pinLookupFailed = true;
+    return false;
+  }
+  pinLookupFailed = false;
+  if (!chk.value){
     const v = await pinModal({
       title: "Create a dashboard PIN",
       help:  "Set a PIN (at least 4 digits) to protect the charger controls. You'll need it whenever you change something.",
@@ -955,7 +975,9 @@ async function writeControl(key, value){
 
 function reasonText(reason){
   switch(reason){
-    case "cancelled":   return "Cancelled — PIN required to change controls";
+    case "cancelled":   return pinLookupFailed
+        ? "Couldn't reach the server to check the PIN — try again"
+        : "Cancelled — PIN required to change controls";
     case "bad_pin":     return "Wrong PIN — not saved";
     case "pin_not_set": return "No PIN set yet";
     case "bad_key":     return "Not allowed";
