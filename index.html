@@ -269,6 +269,11 @@
     .override-status{text-align:left}
   }
 
+  /* UPDATE BANNER */
+  #update-banner{position:fixed;left:0;right:0;top:0;z-index:1100;cursor:pointer;
+    background:var(--cyan);color:var(--bg);font-weight:800;font-size:14px;
+    letter-spacing:0.04em;text-align:center;padding:12px 16px}
+
   /* PIN MODAL */
   .pin-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
     background:rgba(3,6,14,0.72);backdrop-filter:blur(4px);padding:20px}
@@ -313,6 +318,7 @@
   <header class="header">
     <div class="location"><strong>EDF FreePhase Dynamic</strong> — ST15 0WL</div>
     <div class="clock" id="clock"><span class="time">--:--:--</span><span class="date">—</span></div>
+    <div id="hdr-build" style="font-size:10px;color:var(--text-very-dim);letter-spacing:.08em"></div>
   </header>
 
   <!-- Free electricity banner moved ABOVE the hero card so the headline is the first thing on screen -->
@@ -568,10 +574,13 @@
   </footer>
 </div>
 
+<div id="update-banner" hidden>New version available — tap to update</div>
+
 <div id="pin-overlay" class="pin-overlay" hidden>
   <div class="pin-box" role="dialog" aria-modal="true" aria-labelledby="pin-title">
     <div class="pin-title" id="pin-title">Enter dashboard PIN</div>
     <div class="pin-help" id="pin-help"></div>
+    <div id="pin-build" style="font-size:11px;color:var(--text-very-dim);margin:-8px 0 12px"></div>
     <input id="pin-input" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*"
            autocomplete="off" name="fp-control-pin" aria-label="PIN" placeholder="••••">
     <div class="pin-err" id="pin-err"></div>
@@ -582,7 +591,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 18:21";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-12 18:26";   // visible in the footer; confirms which build a device loaded
 const BASELINE = 25.65;
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
@@ -611,7 +620,38 @@ function updateClock(){
   document.getElementById("clock").innerHTML = `<span class="time">${t}</span><span class="date">${d}</span>`;
 }
 setInterval(updateClock,1000); updateClock();
-{ const bs = document.getElementById("build-stamp"); if (bs) bs.textContent = "build " + BUILD; }
+function renderBuildStamps(){
+  const txt = "build " + BUILD;
+  for (const id of ["build-stamp","hdr-build","pin-build"]){
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  }
+}
+renderBuildStamps();
+
+// A stale cached page is the most common cause of "the fix didn't work": GitHub Pages
+// serves this HTML with max-age=600 and browsers can hold it far longer. Compare the
+// running BUILD against the server's and heal automatically (once per tab).
+async function checkForUpdate(){
+  try {
+    const res = await fetch(location.pathname + "?cb=" + Date.now(), { cache:"no-store" });
+    if (!res.ok) return;
+    const m = (await res.text()).match(/const BUILD = "([^"]+)"/);
+    if (!m || m[1] === BUILD) return;
+    const banner = document.getElementById("update-banner");
+    if (banner){
+      banner.hidden = false;
+      banner.textContent = `New version available (${m[1]}) — tap to update`;
+      banner.onclick = () => location.replace(location.pathname + "?v=" + encodeURIComponent(m[1]));
+    }
+    let already = null;
+    try { already = sessionStorage.getItem("fp_autoreload"); } catch(_) {}
+    if (!already){
+      try { sessionStorage.setItem("fp_autoreload","1"); } catch(_) {}
+      location.replace(location.pathname + "?v=" + encodeURIComponent(m[1]));
+    }
+  } catch(_) {}
+}
 
 function getSourcePrice(data, source){
   return data?.[source[0]]?.[source[1]]?.price ?? null;
@@ -1355,6 +1395,7 @@ async function cancelSchedule(device){
 }
 
 async function init(){
+  checkForUpdate();
   await loadThreshold();
   await loadGreenForce();
   await loadOverrides();
