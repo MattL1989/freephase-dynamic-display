@@ -169,6 +169,14 @@
   /* Immersion section uses a purple accent so it's visually distinct from the EV charger sections */
   .charge-mode-pill.imm-on{color:var(--purple);border-color:rgba(192,132,252,0.45);
     background:rgba(192,132,252,0.08);animation:pulse 1.6s ease-in-out infinite}
+  /* Usage strip. The plug has no meter, so kWh here is derived from runtime and is labelled
+     as an estimate - see .imm-usage-note, which must stay visible rather than be trimmed. */
+  .imm-usage{margin-top:18px;padding:16px 18px;border-radius:14px;
+    background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.22)}
+  .imm-usage-main{font-size:16px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+  .imm-usage-live{font-size:14px;color:var(--purple);font-weight:600;margin-top:5px;
+    font-variant-numeric:tabular-nums}
+  .imm-usage-note{font-size:12px;color:var(--text-dim);margin-top:7px;line-height:1.45}
 /* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
@@ -509,10 +517,13 @@
       </div>
     </div>
 
-    <!-- IMMERSION HEATER (Tuya smart plug, switches the hot-water cylinder when price < 2p) -->
+    <!-- IMMERSION HEATER (Tuya smart plug on the hot-water cylinder). Heats overnight on the
+         off-peak rate because 6.66p/kWh of electricity is cheaper than gas at ~9.23p/kWh of
+         heat into the cylinder. The cylinder thermostat does the real controlling; the 6h
+         auto-cutoff is only a backstop. -->
     <div class="charge-section">
       <div class="charge-section-head">
-        <div class="charge-section-title">Immersion Heater <span class="charge-cap">auto-on during free (0p) hours · 2h max runtime</span></div>
+        <div class="charge-section-title">Immersion Heater <span class="charge-cap">auto-on 23:00–06:00 &amp; free (0p) hours · 6h max runtime</span></div>
         <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
       </div>
       <div class="charge-grid">
@@ -533,9 +544,14 @@
         </div>
         <div class="charge-metric">
           <div class="metric-label">Auto rule</div>
-          <div class="metric-value" style="font-size:22px">FREE 0p</div>
-          <div class="metric-sub">only during free hours</div>
+          <div class="metric-value" style="font-size:22px">23–06 + 0p</div>
+          <div class="metric-sub">off-peak window and free hours</div>
         </div>
+      </div>
+      <div class="imm-usage">
+        <div class="imm-usage-main" id="imm-usage-main">No completed run recorded yet</div>
+        <div class="imm-usage-live" id="imm-usage-live" hidden></div>
+        <div class="imm-usage-note" id="imm-usage-note"></div>
       </div>
     </div>
   </section>
@@ -564,7 +580,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-13 09:37";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-13 11:28";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1111,8 +1127,74 @@ async function loadLiveState(){
     } else {
       document.getElementById("imm-since").textContent = "—";
     }
+    renderImmersionUsage(imm.usage, (state.tariff || {}).offpeak_price_p);
 
   } catch(e){ console.error("live state fetch failed", e); }
+}
+
+// ------------------------------------------------------------------
+// IMMERSION USAGE — runtime is measured, energy is NOT.
+// The plug is a plain relay with no metering (confirmed by probing the device), so the Pi
+// times how long it was switched on and derives kWh from the live supply voltage. Two honest
+// caveats are shown to the user rather than buried: the figure is an estimate, and the
+// cylinder thermostat can open while the plug stays on, which makes it an upper bound.
+// ------------------------------------------------------------------
+function fmtMins(mins){
+  if (mins == null) return "—";
+  const m = Math.round(mins);
+  const h = Math.floor(m / 60);
+  return h ? `${h}h ${String(m % 60).padStart(2,"0")}m` : `${m}m`;
+}
+
+function renderImmersionUsage(usage, offpeakPence){
+  const mainEl = document.getElementById("imm-usage-main");
+  const liveEl = document.getElementById("imm-usage-live");
+  const noteEl = document.getElementById("imm-usage-note");
+  if (!mainEl) return;
+
+  if (!usage){
+    mainEl.textContent = "Usage tracking not reporting";
+    liveEl.hidden = true;
+    noteEl.textContent = "";
+    return;
+  }
+
+  const ln = usage.last_night;
+  if (ln && ln.on_minutes != null){
+    const from = new Date(ln.started).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    const to   = new Date(ln.ended).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    const day  = new Date(ln.ended).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+    let txt = `Last run ${day} · ${from}–${to} · ${fmtMins(ln.on_minutes)} on · ≈${ln.est_kwh_max} kWh`;
+    if (offpeakPence != null && ln.est_kwh_max != null){
+      txt += ` · ≈£${(ln.est_kwh_max * offpeakPence / 100).toFixed(2)}`;
+    }
+    mainEl.textContent = txt;
+  } else {
+    mainEl.textContent = "No completed run recorded yet";
+  }
+
+  if (usage.session_active){
+    let live = `Running now · ${fmtMins(usage.session_on_minutes)} so far · ≈${usage.session_est_kwh} kWh`;
+    if (offpeakPence != null && usage.session_est_kwh != null){
+      live += ` · ≈£${(usage.session_est_kwh * offpeakPence / 100).toFixed(2)}`;
+    }
+    liveEl.textContent = live;
+    liveEl.hidden = false;
+  } else {
+    liveEl.hidden = true;
+  }
+
+  const bits = [];
+  if (usage.assumed_power_w) bits.push(`${usage.assumed_power_w} W element at ${usage.supply_volts} V`);
+  bits.push("kWh is estimated from run time — this plug has no meter");
+  bits.push("upper bound: the cylinder thermostat can cut the element while the plug stays on");
+  noteEl.textContent = bits.join(" · ");
+
+  if (ln && ln.end_reason){
+    const why = {window_end:"ended when off-peak finished", max_runtime:"stopped by the 6h safety cutoff",
+                 switched_off:"switched off"}[ln.end_reason] || ln.end_reason;
+    noteEl.textContent += ` · last run ${why}`;
+  }
 }
 
 // ------------------------------------------------------------------
