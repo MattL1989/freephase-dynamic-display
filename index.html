@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDF FreePhase Dynamic — ST15 0WL</title>
+<title>EDF Go Electric — ST15 0WL</title>
 <style>
   :root {
     color-scheme: dark;
@@ -324,7 +324,7 @@
 <body>
 <div class="container">
   <header class="header">
-    <div class="location"><strong>EDF FreePhase Dynamic</strong> — ST15 0WL</div>
+    <div class="location"><strong>EDF Go Electric</strong> — ST15 0WL</div>
     <div class="clock" id="clock"><span class="time">--:--:--</span><span class="date">—</span></div>
     <div id="hdr-build" style="font-size:10px;color:var(--text-very-dim);letter-spacing:.08em"></div>
   </header>
@@ -336,36 +336,28 @@
     <div class="now-grid">
       <div class="now-main">
         <div class="now-label">Right Now</div>
-        <div class="now-band"><span class="now-dot"></span><span id="now-band-name">—</span></div>
-        <div class="now-price"><span id="now-price">—</span><span class="unit">p / kWh</span></div>
-        <div class="now-context" id="now-context">—</div>
+        <div class="now-band"><span class="now-dot"></span><span id="now-band-name">-</span></div>
+        <div class="now-price"><span id="now-price">-</span><span class="unit">p / kWh</span></div>
+        <div class="now-context" id="now-context">-</div>
         <div class="now-meta" id="now-meta"></div>
       </div>
       <div class="now-side">
-        <div class="charging-pill" id="charging-pill">Charging —</div>
+        <div class="charging-pill" id="charging-pill">Charging -</div>
         <div class="device-pills">
-          <div class="device-pill off" id="easee-mini">Easee One Charger · —</div>
-          <div class="device-pill off" id="tuya-mini">PHEV Charger · —</div>
-          <div class="device-pill off" id="immersion-mini">Immersion · —</div>
+          <div class="device-pill off" id="easee-mini">Easee One Charger &middot; -</div>
+          <div class="device-pill off" id="tuya-mini">PHEV Charger &middot; -</div>
+          <div class="device-pill off" id="immersion-mini">Immersion &middot; -</div>
         </div>
-        <div class="next-band" id="next-band">—</div>
+        <div class="next-band" id="next-band">-</div>
       </div>
     </div>
   </section>
 
-  <div class="section-heading">Today</div>
+  <div class="section-heading">Your Tariff</div>
   <div class="bands">
-    <div id="today-green-morning"></div>
-    <div id="today-amber"></div>
-    <div id="today-red"></div>
-    <div id="today-green-late"></div>
-  </div>
-
-  <div class="section-heading">Tomorrow</div>
-  <div class="bands">
-    <div id="tomorrow-green-morning"></div>
-    <div id="tomorrow-amber"></div>
-    <div id="tomorrow-red"></div>
+    <div id="rate-offpeak"></div>
+    <div id="rate-peak"></div>
+    <div id="rate-standing"></div>
   </div>
 
   <section class="charge-panel" id="charge-panel">
@@ -548,36 +540,9 @@
     </div>
   </section>
 
-  <section class="threshold-panel">
-    <div class="threshold-head">
-      <div class="threshold-title">Charging Threshold</div>
-      <div class="threshold-current">
-        <span class="label">Currently</span>
-        <span class="value" id="current-threshold">—</span>
-        <span class="unit">p / kWh</span>
-      </div>
-    </div>
-    <div class="threshold-controls">
-      <input id="new-threshold" type="number" step="0.01" class="threshold-input" placeholder="Enter new threshold (p / kWh)">
-      <button class="threshold-save" onclick="updateThreshold()">Save</button>
-    </div>
-    <div id="threshold-status" class="threshold-status"></div>
-
-    <div class="toggle-row">
-      <div class="toggle-text">
-        <div class="toggle-title">Auto-charge during green window</div>
-        <div class="toggle-help">When <b>ON</b>, charging starts overnight (23:00–06:00) whenever the green-band price is reasonable, even if it's above your threshold. When <b>OFF</b>, charging is purely threshold-driven — useful when tomorrow's amber is cheaper than tonight's green.</div>
-        <div id="green-force-status" class="toggle-status"></div>
-      </div>
-      <label class="toggle-switch" title="Auto-charge during green window">
-        <input type="checkbox" id="green-force-toggle" onchange="updateGreenForce(this.checked)">
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-  </section>
 
   <footer class="footer">
-    EDF FreePhase Display by Matt Lewis · Auto-refreshes every minute
+    EDF Go Electric Display by Matt Lewis · Auto-refreshes every minute
     · <span id="build-stamp" style="opacity:.75"></span>
   </footer>
 </div>
@@ -599,24 +564,13 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-12 20:57";   // visible in the footer; confirms which build a device loaded
-const BASELINE = 25.65;
+const BUILD = "2026-09-13 09:20";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
-// Local-time windows; each maps to a band card + the data.json field that supplies its price
-const WINDOWS = [
-  { start:    1, end:  360, key: "today-green-morning", band: "green", source: ["today","green"],    label: "00:01 - 06:00" },
-  { start:  360, end:  960, key: "today-amber",         band: "amber", source: ["today","amber"],    label: "06:00 - 16:00 & 19:00 - 23:00" },
-  { start:  960, end: 1140, key: "today-red",           band: "red",   source: ["today","red"],      label: "16:00 - 19:00" },
-  { start: 1140, end: 1380, key: "today-amber",         band: "amber", source: ["today","amber"],    label: "06:00 - 16:00 & 19:00 - 23:00" },
-  { start: 1380, end: 1440, key: "today-green-late",    band: "green", source: ["tomorrow","green"], label: "23:00 - 00:00" },
-];
 
-let currentThreshold = null;
-let currentGreenForce = null;        // null = unknown; bool when fetched
-let currentLivePrice = null;         // the actual half-hourly EDF rate the Pi sees; null until live_state arrives
-let lastData = null;
+const STANDING_CHARGE_P = 59.71;     // region E inc VAT at 5%; 56.868p once VAT goes 0% on 1 Oct
+let currentTariff = null;            // tariff block published by the Pi (rates, period, free hours)
 let lastTuyaVoltage = null;          // remember most recent voltage we saw so we don't dash out
 let lastTuyaPhaseA  = null;          // last real V/A/kW frame from the breaker (phase_a is intermittent)
 
@@ -662,162 +616,104 @@ async function checkForUpdate(){
   } catch(_) {}
 }
 
-function getSourcePrice(data, source){
-  return data?.[source[0]]?.[source[1]]?.price ?? null;
+// ------------------------------------------------------------------
+// TARIFF RENDERING - EDF Go Electric 12m v2 (fixed two-rate)
+// Everything here comes from the `tariff` block the Pi publishes, which it derives from
+// EDF's published rate periods. So the VAT change on 1 Oct, and any occasional FREE (0p)
+// hours EDF offers, are picked up automatically with no hardcoded rates.
+// ------------------------------------------------------------------
+function fmtClock(iso){
+  if (!iso) return "\u2014";
+  const d = new Date(iso);
+  return isNaN(d) ? "\u2014" : d.toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"});
 }
-
-function minutesNow(){ const n=new Date(); return n.getHours()*60 + n.getMinutes(); }
-
-function currentWindow(){
-  const m = minutesNow();
-  return WINDOWS.find(w => m >= w.start && m < w.end) || WINDOWS[WINDOWS.length-1];
+function untilText(iso){
+  if (!iso) return "";
+  const ms = new Date(iso) - new Date();
+  if (isNaN(ms) || ms <= 0) return "";
+  const m = Math.round(ms/60000), h = Math.floor(m/60);
+  return h > 0 ? (h + "h " + (m%60) + "m") : (m + "m");
 }
-
-function timeUntil(targetMin){
-  const m = minutesNow();
-  let diff = targetMin - m;
-  if (diff <= 0) diff += 1440;
-  const h = Math.floor(diff/60), mins = diff % 60;
-  return h > 0 ? `${h}h ${mins}m` : `${mins}m`;
-}
-
-function pctMarkup(price){
-  if (price == null) return "";
-  const pct = ((BASELINE - price) / BASELINE) * 100;
-  const cls = pct >= 0 ? "below" : "above";
-  const arrow = pct >= 0 ? "▼" : "▲";
-  return `<span class="${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"}</span>`;
-}
-function buildBand(elId, band, price, time, isCurrent, bandObj){
+function rateCard(elId, cls, name, price, time, unit){
   const el = document.getElementById(elId);
-  const pending = price == null;
-  el.className = `band ${band} ${isCurrent?"current":""} ${pending?"pending":""}`;
-  // If this band has free slots, surface that — the average is over PAID slots only (so it matches
-  // EDF's headline), but a user looking at "amber 3.72p" deserves to know "16 of 28 slots free today".
-  let breakdown = "";
-  if (bandObj && typeof bandObj.free_slots === "number" && bandObj.free_slots > 0){
-    const total = (bandObj.paid_slots || 0) + bandObj.free_slots;
-    breakdown = `<div class="band-delta" style="color:#22d3ee">${bandObj.free_slots} of ${total} slots free · paid-slot avg shown</div>`;
-  }
-  el.innerHTML = `
-    <div class="band-head">
-      <div class="band-name">${band.toUpperCase()}</div>
-      ${isCurrent ? `<div class="band-now">NOW</div>` : ""}
-    </div>
-    ${pending
-      ? `<div class="band-pending">Awaiting publication</div>`
-      : `<div class="band-price">${price.toFixed(2)}<span class="unit">p / kWh</span></div>`}
-    <div class="band-time">${time}</div>
-    ${pending ? "" : `<div class="band-delta">${pctMarkup(price)} vs ${BASELINE.toFixed(2)}p baseline</div>`}
-    ${breakdown}
-  `;
+  if (!el) return;
+  const pending = (price == null);
+  el.className = "band " + cls + (pending ? " pending" : "");
+  el.innerHTML =
+    '<div class="band-head"><div class="band-name">' + name + '</div></div>' +
+    (pending
+      ? '<div class="band-pending">\u2014</div>'
+      : '<div class="band-price">' + Number(price).toFixed(2) +
+        '<span class="unit">' + (unit || "p / kWh") + '</span></div>') +
+    '<div class="band-time">' + time + '</div>';
 }
 
-// Prefer the Pi's live half-hourly price (currentLivePrice) over the daily band average from data.json.
-// This is the same number the controller compares against PRICE_THRESHOLD, so what the display shows
-// is what the controller is actually deciding on — no more "display said 1.59p but Pi saw 13.2p".
-function renderNow(data){
-  const w = currentWindow();
-  const bandAvg = getSourcePrice(data, w.source);
-  const price = (currentLivePrice != null) ? currentLivePrice : bandAvg;
-
-  const nowCard = document.getElementById("now-card");
-  nowCard.className = `now-card ${w.band}`;
-  document.getElementById("now-band-name").textContent = w.band.toUpperCase();
-
-  if (price == null){
-    document.getElementById("now-price").textContent = "—";
-    document.getElementById("now-context").textContent = "Awaiting publication";
-  } else {
-    document.getElementById("now-price").textContent = price.toFixed(2);
-    const pct = ((BASELINE - price) / BASELINE) * 100;
-    const cls = pct >= 0 ? "below" : "above";
-    const arrow = pct >= 0 ? "▼" : "▲";
-    document.getElementById("now-context").innerHTML =
-      `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(0)}% ${pct>=0?"below":"above"} baseline</span> (${BASELINE.toFixed(2)}p)`;
-  }
-
-  // Meta line: show source + how it compares to the daily band average so the user can spot
-  // intraday rate revisions from EDF without confusion.
-  const metaEl = document.getElementById("now-meta");
-  if (currentLivePrice != null && bandAvg != null){
-    const diff = currentLivePrice - bandAvg;
-    if (Math.abs(diff) < 0.05){
-      metaEl.innerHTML = `Live half-hourly rate · matches today's <b>${w.band}</b> band average (<b>${bandAvg.toFixed(2)}p</b>)`;
-    } else {
-      const sign = diff > 0 ? "+" : "";
-      const direction = diff > 0 ? "above" : "below";
-      metaEl.innerHTML = `Live half-hourly rate · <b>${sign}${diff.toFixed(2)}p</b> ${direction} today's <b>${w.band}</b> band average (<b>${bandAvg.toFixed(2)}p</b>)`;
-    }
-  } else if (currentLivePrice != null){
-    metaEl.innerHTML = `Live half-hourly rate from Pi (band average not yet published)`;
-  } else {
-    metaEl.innerHTML = `Daily <b>${w.band}</b> band average — Pi hasn't reported a live rate yet`;
-  }
-
-  const idx = WINDOWS.indexOf(w);
-  const next = WINDOWS[(idx + 1) % WINDOWS.length];
-  const nextPrice = getSourcePrice(data, next.source);
-  const eta = timeUntil(next.start);
-  let nextHtml = `<b>${next.band.toUpperCase()}</b>`;
-  if (nextPrice != null) nextHtml += ` at <b>${nextPrice.toFixed(2)}p</b>`;
-  nextHtml += ` in <b>${eta}</b>`;
-  document.getElementById("next-band").innerHTML = `Next: ${nextHtml}`;
-
-  // Charging pill — compare the actual live price (not the band average) to the threshold
+function renderTariff(t){
+  const card = document.getElementById("now-card");
   const pill = document.getElementById("charging-pill");
-  if (currentThreshold == null || price == null){
-    pill.className = "charging-pill"; pill.textContent = "Charging —";
-  } else if (price <= currentThreshold){
-    pill.className = "charging-pill on"; pill.textContent = `Charging Enabled · ≤ ${currentThreshold.toFixed(2)}p`;
-  } else {
-    pill.className = "charging-pill off"; pill.textContent = `Charging Disabled · > ${currentThreshold.toFixed(2)}p`;
+  if (!t){
+    document.getElementById("now-band-name").textContent = "NO DATA";
+    document.getElementById("now-price").textContent = "\u2014";
+    document.getElementById("now-context").textContent = "Waiting for the Pi to report the tariff";
+    card.className = "now-card";
+    pill.className = "charging-pill"; pill.textContent = "Charging \u2014";
+    return;
   }
-}
+  const period = t.period || "unknown";
+  const isFree = (period === "free");
+  const isOff  = (period === "offpeak");
+  card.className = "now-card " + ((isFree || isOff) ? "green" : "red");
+  document.getElementById("now-band-name").textContent =
+    isFree ? "FREE" : (isOff ? "OFF-PEAK" : (period === "peak" ? "PEAK" : "\u2014"));
+  document.getElementById("now-price").textContent =
+    (t.price_p != null) ? Number(t.price_p).toFixed(2) : "\u2014";
 
-function renderBands(data){
-  const w = currentWindow();
-  buildBand("today-green-morning","green", data?.today?.green?.price ?? null,    "00:01 - 06:00", w.key==="today-green-morning", data?.today?.green);
-  buildBand("today-amber",        "amber", data?.today?.amber?.price ?? null,    "06:00 - 16:00 & 19:00 - 23:00", w.key==="today-amber", data?.today?.amber);
-  buildBand("today-red",          "red",   data?.today?.red?.price ?? null,      "16:00 - 19:00", w.key==="today-red", data?.today?.red);
-  buildBand("today-green-late",   "green", data?.tomorrow?.green?.price ?? null, "23:00 - 00:00", w.key==="today-green-late", data?.tomorrow?.green);
-  buildBand("tomorrow-green-morning","green", data?.tomorrow?.green?.price ?? null, "00:01 - 06:00", false, data?.tomorrow?.green);
-  buildBand("tomorrow-amber",     "amber", data?.tomorrow?.amber?.price ?? null, "06:00 - 16:00 & 19:00 - 23:00", false, data?.tomorrow?.amber);
-  buildBand("tomorrow-red",       "red",   data?.tomorrow?.red?.price ?? null,   "16:00 - 19:00", false, data?.tomorrow?.red);
-}
-async function loadFreeElectricity(){
-  const el = document.getElementById("free-electricity");
-  try {
-    const res = await fetch("https://api.edfgb-kraken.energy/v1/products/EDF_FREEPHASE_DYNAMIC_12M_HH/electricity-tariffs/E-1R-EDF_FREEPHASE_DYNAMIC_12M_HH-E/standard-unit-rates/");
-    const data = await res.json();
-    const todayKey = new Date().toISOString().slice(0,10);
-    const freeSlots = (data.results || [])
-      .filter(r => r.value_inc_vat === 0 && r.valid_from.startsWith(todayKey))
-      .sort((a,b) => new Date(a.valid_from) - new Date(b.valid_from));
-    if (!freeSlots.length){ el.innerHTML = ""; return; }
-    const fmt = d => new Date(d).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
-    el.innerHTML = `
-      <div class="free-banner">
-        <div class="free-icon">⚡</div>
-        <div>
-          <div class="free-title">FREE ELECTRICITY TODAY</div>
-          <div class="free-time">${fmt(freeSlots[0].valid_from)} – ${fmt(freeSlots[freeSlots.length-1].valid_to)}</div>
-        </div>
-      </div>`;
-  } catch(e){ console.error("Free electricity fetch failed", e); }
-}
+  const startH = String(t.offpeak_start_hour == null ? 23 : t.offpeak_start_hour).padStart(2,"0");
+  const endH   = String(t.offpeak_end_hour   == null ? 6  : t.offpeak_end_hour  ).padStart(2,"0");
 
-async function loadThreshold(){
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.threshold&select=value`,
-      { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` } });
-    const data = await res.json();
-    currentThreshold = data.length ? parseFloat(data[0].value) : null;
-  } catch(e){ console.error(e); currentThreshold = null; }
-  document.getElementById("current-threshold").textContent = currentThreshold != null ? currentThreshold.toFixed(2) : "—";
-  // Do NOT clear #new-threshold here: this runs every 30s and used to erase whatever the
-  // user was part-way through typing. updateThreshold() clears it after a successful save.
-  if (lastData) renderNow(lastData);
+  document.getElementById("now-context").innerHTML = isFree
+    ? '<span class="delta below">Free electricity \u2014 everything is charging</span>'
+    : (isOff
+        ? '<span class="delta below">Off-peak window ' + startH + ':00\u2013' + endH + ':00</span>'
+        : '<span class="delta above">Peak rate \u2014 chargers hold until ' + startH + ':00</span>');
+  document.getElementById("now-meta").innerHTML =
+    (t.name || "Go Electric") + " \u00b7 off-peak " + startH + ":00\u2013" + endH + ":00";
+
+  const nb = document.getElementById("next-band");
+  if (t.next_change_at && t.next_change_price_p != null){
+    const u = untilText(t.next_change_at);
+    nb.innerHTML = "Next: <b>" + Number(t.next_change_price_p).toFixed(2) + "p</b> at <b>" +
+                   fmtClock(t.next_change_at) + "</b>" + (u ? " (in <b>" + u + "</b>)" : "");
+  } else {
+    nb.textContent = "\u2014";
+  }
+
+  if (isFree || isOff){
+    pill.className = "charging-pill on";
+    pill.textContent = isFree ? "Charging \u00b7 FREE" : "Charging \u00b7 Off-Peak";
+  } else {
+    pill.className = "charging-pill off";
+    pill.textContent = "Holding until " + startH + ":00";
+  }
+
+  rateCard("rate-offpeak",  "green", "OFF-PEAK", t.offpeak_price_p, startH + ":00 \u2013 " + endH + ":00 every night");
+  rateCard("rate-peak",     "red",   "PEAK",     t.peak_price_p,    endH + ":00 \u2013 " + startH + ":00");
+  rateCard("rate-standing", "amber", "STANDING CHARGE", STANDING_CHARGE_P, "charged daily, whatever you use", "p / day");
+
+  // EDF occasionally publishes FREE (0p) periods; they arrive in this list and the Pi
+  // switches both chargers and the immersion heater on for them.
+  const fe = document.getElementById("free-electricity");
+  const free = t.free_periods || [];
+  if (free.length){
+    const f = free[0];
+    fe.innerHTML =
+      '<div class="free-banner"><div class="free-icon">\u26a1</div><div>' +
+      '<div class="free-title">FREE ELECTRICITY' + (isFree ? " \u2014 NOW" : "") + '</div>' +
+      '<div class="free-time">' + fmtClock(f.start) + " \u2013 " + fmtClock(f.end) + '</div>' +
+      '</div></div>';
+  } else {
+    fe.innerHTML = "";
+  }
 }
 
 // ------------------------------------------------------------------
@@ -985,31 +881,6 @@ function reasonText(reason){
   }
 }
 
-async function updateThreshold(){
-  const raw = document.getElementById("new-threshold").value;
-  if (!raw){ return; }
-  const status = document.getElementById("threshold-status");
-  status.className = "threshold-status"; status.textContent = "Saving…";
-  const r = await writeControl("threshold", raw);
-  if (r.ok){
-    currentThreshold = parseFloat(raw);
-    document.getElementById("current-threshold").textContent = currentThreshold.toFixed(2);
-    document.getElementById("new-threshold").value = "";
-    status.className = "threshold-status ok"; status.textContent = `Saved · threshold set to ${currentThreshold.toFixed(2)}p`;
-    if (lastData) renderNow(lastData);
-  } else {
-    status.className = "threshold-status err"; status.textContent = reasonText(r.reason);
-  }
-}
-
-function fetchData(){
-  return fetch("https://raw.githubusercontent.com/MattL1989/freephase-dynamic-display/main/data.json?ts=" + Date.now(),
-    { cache: "no-store" })
-    .then(r => r.json())
-    .then(data => { lastData = data; renderNow(data); renderBands(data); })
-    .catch(e => console.error("data.json fetch failed", e));
-}
-
 function fmtNum(n, dp){
   if (n == null || isNaN(n)) return "—";
   return Number(n).toFixed(dp);
@@ -1084,10 +955,10 @@ async function loadLiveState(){
     const tuya = state.tuya || {};
     const imm  = state.immersion || {};
 
-    // Live half-hourly EDF rate the Pi sees, published from check_price_and_control().
-    // Stored globally so renderNow() (called by data.json refresh) uses it as the headline price.
-    currentLivePrice = (typeof state.current_price_p === "number") ? state.current_price_p : null;
-    if (lastData) renderNow(lastData);
+    // The Pi publishes the whole tariff picture (current rate, period, next change and any
+    // free 0p hours), derived from EDF's published rate periods - so nothing is hardcoded.
+    currentTariff = state.tariff || null;
+    renderTariff(currentTariff);
 
     // Mode pill
     const pill = document.getElementById("charge-mode");
@@ -1209,40 +1080,7 @@ async function loadLiveState(){
       document.getElementById("imm-since").textContent = "—";
     }
 
-    // NB: state.green_force comes from the Pi's last cycle so it lags writes.
-    // We deliberately don't reconcile the toggle here - loadGreenForce() reads
-    // straight from Supabase on a tighter schedule, which is the source of truth.
   } catch(e){ console.error("live state fetch failed", e); }
-}
-
-async function loadGreenForce(){
-  try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.green_force&select=value`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" });
-    const rows = await r.json();
-    if (!rows.length) return;
-    const v = String(rows[0].value).trim().toLowerCase();
-    currentGreenForce = (v === "true" || v === "1" || v === "yes" || v === "on");
-    const cb = document.getElementById("green-force-toggle");
-    if (cb && document.activeElement !== cb) cb.checked = !!currentGreenForce;
-  } catch(e){ console.error("green_force fetch failed", e); }
-}
-
-async function updateGreenForce(checked){
-  const status = document.getElementById("green-force-status");
-  status.className = "toggle-status"; status.textContent = "Saving…";
-  const r = await writeControl("green_force", checked ? "true" : "false");
-  if (r.ok){
-    currentGreenForce = checked;
-    status.className = "toggle-status ok";
-    status.textContent = checked
-      ? "Saved · auto-charge during green window enabled"
-      : "Saved · green window will use threshold logic (Pi picks up within 2 min)";
-  } else {
-    status.className = "toggle-status err";
-    status.textContent = reasonText(r.reason);
-    document.getElementById("green-force-toggle").checked = !!currentGreenForce;
-  }
 }
 
 // ------------------------------------------------------------------
@@ -1456,21 +1294,14 @@ async function cancelSchedule(device){
 
 async function init(){
   checkForUpdate();
-  await loadThreshold();
-  await loadGreenForce();
   await loadOverrides();
   initWheels();
   await loadSchedules();
-  await fetchData();
-  loadFreeElectricity();
-  loadLiveState();
-  setInterval(fetchData, 60_000);              // refresh bands every minute
-  setInterval(loadThreshold, 30_000);          // refresh threshold every 30s
-  setInterval(loadGreenForce, 30_000);         // refresh green-force toggle every 30s
+  loadLiveState();                             // tariff AND device state both come from live_state
   setInterval(loadOverrides, 30_000);          // refresh per-device overrides every 30s
   setInterval(loadSchedules, 30_000);          // refresh one-shot charge schedules every 30s
-  setInterval(loadFreeElectricity, 60*60_000); // refresh free check hourly
-  setInterval(loadLiveState, 15_000);          // refresh live charging state every 15s
+  setInterval(loadLiveState, 15_000);          // refresh tariff + live charging state every 15s
+  setInterval(function(){ renderTariff(currentTariff); }, 30_000);  // keep the countdown fresh
 }
 init();
 </script>
