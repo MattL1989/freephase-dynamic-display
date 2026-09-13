@@ -580,7 +580,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-13 11:28";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-13 11:34";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1139,6 +1139,13 @@ async function loadLiveState(){
 // caveats are shown to the user rather than buried: the figure is an estimate, and the
 // cylinder thermostat can open while the plug stays on, which makes it an upper bound.
 // ------------------------------------------------------------------
+// Sub-£1 runs would render as "£0.00" and read like a bug, so show pence instead.
+function fmtCost(kwh, pence){
+  if (kwh == null || pence == null) return null;
+  const p = kwh * pence;
+  return p < 100 ? `${p.toFixed(1)}p` : `£${(p / 100).toFixed(2)}`;
+}
+
 function fmtMins(mins){
   if (mins == null) return "—";
   const m = Math.round(mins);
@@ -1165,9 +1172,8 @@ function renderImmersionUsage(usage, offpeakPence){
     const to   = new Date(ln.ended).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
     const day  = new Date(ln.ended).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
     let txt = `Last run ${day} · ${from}–${to} · ${fmtMins(ln.on_minutes)} on · ≈${ln.est_kwh_max} kWh`;
-    if (offpeakPence != null && ln.est_kwh_max != null){
-      txt += ` · ≈£${(ln.est_kwh_max * offpeakPence / 100).toFixed(2)}`;
-    }
+    const cost = fmtCost(ln.est_kwh_max, offpeakPence);
+    if (cost) txt += ` · ≈${cost}`;
     mainEl.textContent = txt;
   } else {
     mainEl.textContent = "No completed run recorded yet";
@@ -1175,9 +1181,8 @@ function renderImmersionUsage(usage, offpeakPence){
 
   if (usage.session_active){
     let live = `Running now · ${fmtMins(usage.session_on_minutes)} so far · ≈${usage.session_est_kwh} kWh`;
-    if (offpeakPence != null && usage.session_est_kwh != null){
-      live += ` · ≈£${(usage.session_est_kwh * offpeakPence / 100).toFixed(2)}`;
-    }
+    const lcost = fmtCost(usage.session_est_kwh, offpeakPence);
+    if (lcost) live += ` · ≈${lcost}`;
     liveEl.textContent = live;
     liveEl.hidden = false;
   } else {
