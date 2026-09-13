@@ -345,7 +345,7 @@
         <div class="charging-pill" id="charging-pill">Charging -</div>
         <div class="device-pills">
           <div class="device-pill off" id="easee-mini">Easee One Charger &middot; -</div>
-          <div class="device-pill off" id="tuya-mini">PHEV Charger &middot; -</div>
+          <div class="device-pill off" id="tuya-mini">POWER16 Charger &middot; -</div>
           <div class="device-pill off" id="immersion-mini">Immersion &middot; -</div>
         </div>
         <div class="next-band" id="next-band">-</div>
@@ -440,10 +440,10 @@
     <!-- TUYA 3.7 kW BREAKER -->
     <div class="charge-section">
       <div class="charge-section-head">
-        <div class="charge-section-title">PHEV Charger <span class="charge-cap">3.7 kW · 16 A · via Tuya breaker</span></div>
+        <div class="charge-section-title">POWER16 Charger <span class="charge-cap">3.7 kW · 16 A Type 2 · PHEV · via Tuya breaker</span></div>
         <div class="section-controls">
           <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
-          <div class="override-control" id="breaker-override" role="group" aria-label="PHEV charger manual control">
+          <div class="override-control" id="breaker-override" role="group" aria-label="POWER16 charger manual control">
             <button type="button" data-mode="auto" onclick="setOverride('breaker','auto')">Auto</button>
             <button type="button" data-mode="on"   onclick="setOverride('breaker','on')">On</button>
             <button type="button" data-mode="off"  onclick="setOverride('breaker','off')">Off</button>
@@ -455,7 +455,7 @@
       <div class="sched" id="breaker-sched">
         <div class="sched-head">
           <div class="sched-title">Scheduled charge
-            <span class="sched-hint">One-shot · forces the PHEV charger ON for the window, then hands back to Auto</span>
+            <span class="sched-hint">One-shot · forces the POWER16 charger ON for the window, then hands back to Auto</span>
           </div>
           <div class="sched-state" id="breaker-sched-state">Off</div>
         </div>
@@ -504,7 +504,7 @@
         <div class="charge-metric">
           <div class="metric-label">Lifetime</div>
           <div class="metric-value"><span id="tuya-lifetime">—</span><span class="unit">kWh</span></div>
-          <div class="metric-sub">PHEV charger total</div>
+          <div class="metric-sub">POWER16 charger total</div>
         </div>
       </div>
     </div>
@@ -512,7 +512,7 @@
     <!-- IMMERSION HEATER (Tuya smart plug, switches the hot-water cylinder when price < 2p) -->
     <div class="charge-section">
       <div class="charge-section-head">
-        <div class="charge-section-title">Immersion Heater <span class="charge-cap">auto-on under 2p · 2h max runtime</span></div>
+        <div class="charge-section-title">Immersion Heater <span class="charge-cap">auto-on during free (0p) hours · 2h max runtime</span></div>
         <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
       </div>
       <div class="charge-grid">
@@ -532,9 +532,9 @@
           <div class="metric-sub">most recent switch-on</div>
         </div>
         <div class="charge-metric">
-          <div class="metric-label">Threshold</div>
-          <div class="metric-value">&lt; 2.00<span class="unit">p</span></div>
-          <div class="metric-sub">automatic only</div>
+          <div class="metric-label">Auto rule</div>
+          <div class="metric-value" style="font-size:22px">FREE 0p</div>
+          <div class="metric-sub">only during free hours</div>
         </div>
       </div>
     </div>
@@ -564,13 +564,14 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-13 09:20";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-13 09:37";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 
-const STANDING_CHARGE_P = 59.71;     // region E inc VAT at 5%; 56.868p once VAT goes 0% on 1 Oct
-let currentTariff = null;            // tariff block published by the Pi (rates, period, free hours)
+const STANDING_CHARGE_FALLBACK = 59.71;   // only used if the Pi has not reported one yet
+let currentTariff = null;
+let staleSince = 0;                  // minutes since the Pi last published, when stale            // tariff block published by the Pi (rates, period, free hours)
 let lastTuyaVoltage = null;          // remember most recent voltage we saw so we don't dash out
 let lastTuyaPhaseA  = null;          // last real V/A/kW frame from the breaker (phase_a is intermittent)
 
@@ -597,8 +598,14 @@ renderBuildStamps();
 // running BUILD against the server's and heal automatically (once per tab).
 async function checkForUpdate(){
   try {
-    const res = await fetch(location.pathname + "?cb=" + Date.now(), { cache:"no-store" });
-    if (!res.ok) return;
+    const ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    const timer = ctl ? setTimeout(function(){ try{ ctl.abort(); }catch(_){} }, 12000) : null;
+    let res;
+    try {
+      res = await fetch(location.pathname + "?cb=" + Date.now(),
+                        Object.assign({cache:"no-store"}, ctl ? {signal: ctl.signal} : {}));
+    } finally { if (timer) clearTimeout(timer); }
+    if (!res || !res.ok) return;
     const m = (await res.text()).match(/const BUILD = "([^"]+)"/);
     if (!m || m[1] === BUILD) return;
     const banner = document.getElementById("update-banner");
@@ -677,7 +684,8 @@ function renderTariff(t){
         ? '<span class="delta below">Off-peak window ' + startH + ':00\u2013' + endH + ':00</span>'
         : '<span class="delta above">Peak rate \u2014 chargers hold until ' + startH + ':00</span>');
   document.getElementById("now-meta").innerHTML =
-    (t.name || "Go Electric") + " \u00b7 off-peak " + startH + ":00\u2013" + endH + ":00";
+    (t.name || "Go Electric") + " \u00b7 off-peak " + startH + ":00\u2013" + endH + ":00" +
+    (staleSince >= 3 ? ' \u00b7 <b style="color:var(--red)">data ' + staleSince + ' min old</b>' : "");
 
   const nb = document.getElementById("next-band");
   if (t.next_change_at && t.next_change_price_p != null){
@@ -698,7 +706,8 @@ function renderTariff(t){
 
   rateCard("rate-offpeak",  "green", "OFF-PEAK", t.offpeak_price_p, startH + ":00 \u2013 " + endH + ":00 every night");
   rateCard("rate-peak",     "red",   "PEAK",     t.peak_price_p,    endH + ":00 \u2013 " + startH + ":00");
-  rateCard("rate-standing", "amber", "STANDING CHARGE", STANDING_CHARGE_P, "charged daily, whatever you use", "p / day");
+  const standing = (t.standing_charge_p != null) ? t.standing_charge_p : STANDING_CHARGE_FALLBACK;
+  rateCard("rate-standing", "amber", "STANDING CHARGE", standing, "charged daily, whatever you use", "p / day");
 
   // EDF occasionally publishes FREE (0p) periods; they arrive in this list and the Pi
   // switches both chargers and the immersion heater on for them.
@@ -726,6 +735,20 @@ function renderTariff(t){
 let controlPin = null;
 let pinLookupFailed = false;   // set when is_pin_set() could not be reached
 try { controlPin = sessionStorage.getItem("fp_pin") || null; } catch(_) { controlPin = null; }
+
+// Every network read goes through this: without a timeout a single hung request
+// leaves the page frozen with no prices, no wheels and no pollers running.
+async function fetchJSON(url, opts, ms){
+  const ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  const timer = ctl ? setTimeout(function(){ try{ ctl.abort(); }catch(_){} }, ms || 12000) : null;
+  try {
+    const res = await fetch(url, Object.assign({}, opts || {}, ctl ? {signal: ctl.signal} : {}));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e){
+    return null;
+  } finally { if (timer) clearTimeout(timer); }
+}
 
 async function rpc(fn, args){
   // Hard timeout: a hung request must never leave the modal stuck on "Checking…"
@@ -946,10 +969,8 @@ function fmtDuration(sec){
 }
 async function loadLiveState(){
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`,
-      { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
-    const rows = await r.json();
-    if (!rows.length) return;
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`, { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
+    if (!rows || !rows.length) return;
     const state = JSON.parse(rows[0].value);
     const easee = state.easee || {};
     const tuya = state.tuya || {};
@@ -978,14 +999,25 @@ async function loadLiveState(){
 
     // Mini status pills in the hero card
     updateDeviceMiniPill("easee-mini",     "Easee One Charger", easeeStatusFromLive(easee));
-    updateDeviceMiniPill("tuya-mini",      "PHEV Charger",      tuyaStatusFromLive(tuya));
+    updateDeviceMiniPill("tuya-mini",      "POWER16 Charger",   tuyaStatusFromLive(tuya));
     updateDeviceMiniPill("immersion-mini", "Immersion", immersionStatusFromLive(imm));
 
-    // Updated timestamp
+    // Updated timestamp, with an explicit stale warning. Without this a dead Pi looks
+    // exactly like a healthy one: every value simply freezes at its last good reading.
+    const upd = document.getElementById("charge-updated");
     if (state.updated_at){
       const d = new Date(state.updated_at);
-      document.getElementById("charge-updated").textContent =
-        "Updated " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      const ageMin = Math.floor((Date.now() - d.getTime()) / 60000);
+      const clock = d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      if (ageMin >= 3){
+        upd.textContent = "Updated " + clock + " \u00b7 STALE (" + ageMin + " min old)";
+        upd.style.color = "var(--red)";
+        staleSince = ageMin;
+      } else {
+        upd.textContent = "Updated " + clock;
+        upd.style.color = "";
+        staleSince = 0;
+      }
     }
 
     // Easee metrics. When the charger isn't live these are last-known, not measurements,
@@ -1107,9 +1139,7 @@ function paintOverride(device, mode){
 
 async function loadOverrides(){
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=in.(easee_override,breaker_override)&select=key,value`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" });
-    const rows = await r.json();
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=in.(easee_override,breaker_override)&select=key,value`, { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
     for (const row of (rows || [])){
       const mode = String(row.value ?? "auto").trim().toLowerCase();
       if (row.key === "easee_override" && !overrideBusy.easee){
@@ -1128,7 +1158,7 @@ async function setOverride(device, mode){
   paintOverride(device, mode);                    // optimistic highlight
   statusEl.className = "override-status"; statusEl.textContent = "Saving…";
   try {
-    const name = device === "easee" ? "BEV charger" : "PHEV charger";
+    const name = device === "easee" ? "Easee One" : "POWER16";
     const r = await writeControl(OVERRIDE_KEY[device], mode);
     if (r.ok){
       if (device === "easee") currentEaseeOverride = mode; else currentBreakerOverride = mode;
@@ -1233,9 +1263,7 @@ function renderSchedState(device){
 
 async function loadSchedules(){
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=in.(easee_schedule,breaker_schedule)&select=key,value`,
-      { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
-    const rows = await r.json();
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=in.(easee_schedule,breaker_schedule)&select=key,value`, { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
     for (const row of (rows || [])){
       let s = null;
       try { s = JSON.parse(row.value); } catch(_) { s = null; }
@@ -1280,7 +1308,7 @@ async function armSchedule(device){
     statusEl.textContent = "Start and end can't be the same time.";
     return;
   }
-  const name = device === "easee" ? "BEV charger" : "PHEV charger";
+  const name = device === "easee" ? "Easee One" : "POWER16";
   await saveSchedule(device, { enabled:true, start, end, fired:false },
     `Armed · ${name} forced ON at ${start}, back to Auto at ${end}`);
 }
