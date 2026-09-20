@@ -523,7 +523,7 @@
          auto-cutoff is only a backstop. -->
     <div class="charge-section">
       <div class="charge-section-head">
-        <div class="charge-section-title">Immersion Heater <span class="charge-cap">auto-on 23:00–06:00 &amp; free (0p) hours · 6h max runtime</span></div>
+        <div class="charge-section-title">Immersion Heater <span class="charge-cap" id="imm-cap">auto-on 03:00–06:00 &amp; free (0p) hours · 4h max runtime</span></div>
         <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
       </div>
       <div class="charge-grid">
@@ -544,8 +544,8 @@
         </div>
         <div class="charge-metric">
           <div class="metric-label">Auto rule</div>
-          <div class="metric-value" style="font-size:22px">23–06 + 0p</div>
-          <div class="metric-sub">off-peak window and free hours</div>
+          <div class="metric-value" style="font-size:22px" id="imm-rule">03–06 + 0p</div>
+          <div class="metric-sub">hot-water window and free hours</div>
         </div>
       </div>
       <div class="imm-usage">
@@ -580,7 +580,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-20 16:48";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-20 17:05";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1128,6 +1128,18 @@ async function loadLiveState(){
       document.getElementById("imm-since").textContent = "—";
     }
     renderImmersionUsage(imm.usage, (state.tariff || {}).offpeak_price_p);
+    // Window text comes from the controller, not hardcoded here - these two captions have
+    // drifted out of step with the actual rule twice now.
+    const t2 = state.tariff || {};
+    if (t2.immersion_start_hour != null && t2.immersion_end_hour != null){
+      const a = String(t2.immersion_start_hour).padStart(2,"0");
+      const b = String(t2.immersion_end_hour).padStart(2,"0");
+      const cap = document.getElementById("imm-cap");
+      const rule = document.getElementById("imm-rule");
+      const maxH = (imm.max_runtime_s != null) ? Math.round(imm.max_runtime_s/3600) : null;
+      if (cap) cap.textContent = `auto-on ${a}:00–${b}:00 & free (0p) hours` + (maxH ? ` · ${maxH}h max runtime` : "");
+      if (rule) rule.textContent = `${a}–${b} + 0p`;
+    }
 
   } catch(e){ console.error("live state fetch failed", e); }
 }
