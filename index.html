@@ -580,7 +580,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-14 06:40";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-20 16:40";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1175,8 +1175,13 @@ function renderImmersionUsage(usage, offpeakPence){
     const day  = new Date(ln.ended).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
     const label = usage.last_window ? "Last night" : "Last run";
     const runs  = (ln.sessions && ln.sessions > 1) ? ` (${ln.sessions} runs)` : "";
-    let txt = `${label} ${day} · ${from}–${to} · ${fmtMins(ln.on_minutes)} on${runs} · ≈${ln.est_kwh_max} kWh`;
-    const cost = fmtCost(ln.est_kwh_max, offpeakPence);
+    // Plug-on time is measured; energy is not. Lead with the calibrated figure where we have
+    // one — the raw ceiling ran ~3.7x high against real meter data and read as fact.
+    let txt = `${label} ${day} · ${from}–${to} · plug on ${fmtMins(ln.on_minutes)}${runs}`;
+    if (ln.element_hours_est != null) txt += ` · element ~${ln.element_hours_est}h`;
+    const kwh = (ln.est_kwh_calibrated != null) ? ln.est_kwh_calibrated : ln.est_kwh_max;
+    txt += ` · ≈${kwh} kWh`;
+    const cost = fmtCost(kwh, offpeakPence);
     if (cost) txt += ` · ≈${cost}`;
     mainEl.textContent = txt;
   } else {
@@ -1195,11 +1200,16 @@ function renderImmersionUsage(usage, offpeakPence){
 
   const bits = [];
   if (usage.assumed_power_w) bits.push(`${usage.assumed_power_w} W element at ${usage.supply_volts} V`);
-  bits.push("kWh is estimated from run time — this plug has no meter");
-  bits.push("upper bound: the cylinder thermostat can cut the element while the plug stays on");
+  bits.push("this plug has no meter — kWh is estimated, not measured");
+  if (ln && ln.est_kwh_calibrated != null && ln.est_kwh_max != null){
+    bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; ceiling if the element ran the whole window would be ${ln.est_kwh_max} kWh`);
+    bits.push("expect more than this on a night with showers — the calibration was taken with no hot water drawn");
+  } else {
+    bits.push("upper bound: the cylinder thermostat can cut the element while the plug stays on");
+  }
   noteEl.textContent = bits.join(" · ");
 
-  if (ln && ln.exceeds_cylinder && ln.cylinder_cold_to_60_kwh){
+  if (ln && ln.exceeds_cylinder && ln.cylinder_cold_to_60_kwh && ln.est_kwh_calibrated == null){
     noteEl.textContent += ` · above the cylinder's cold-to-60 °C capacity (${ln.cylinder_cold_to_60_kwh} kWh), so the thermostat almost certainly cut the element for part of the night`;
   }
   if (ln && ln.end_reason){
