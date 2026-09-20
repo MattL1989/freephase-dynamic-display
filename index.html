@@ -580,7 +580,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-20 16:40";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-20 16:48";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1203,7 +1203,7 @@ function renderImmersionUsage(usage, offpeakPence){
   bits.push("this plug has no meter — kWh is estimated, not measured");
   if (ln && ln.est_kwh_calibrated != null && ln.est_kwh_max != null){
     bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; ceiling if the element ran the whole window would be ${ln.est_kwh_max} kWh`);
-    bits.push("expect more than this on a night with showers — the calibration was taken with no hot water drawn");
+    bits.push("measured across nights of normal hot-water use, so it already includes showers");
   } else {
     bits.push("upper bound: the cylinder thermostat can cut the element while the plug stays on");
   }
