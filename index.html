@@ -581,7 +581,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-21 14:20";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-21 16:05";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1205,7 +1205,10 @@ async function loadLiveState(){
       const b = String(immT.immersion_end_hour).padStart(2,"0");
       const cap = document.getElementById("imm-cap");
       const rule = document.getElementById("imm-rule");
-      const maxH = (imm.max_runtime_s != null) ? Math.round(imm.max_runtime_s/3600) : null;
+      // Not Math.round: the backstop is 3.5h and rounding printed "4h max runtime".
+      const maxRaw = (imm.max_runtime_s != null) ? (imm.max_runtime_s / 3600) : null;
+      const maxH = (maxRaw == null) ? null
+                 : (Number.isInteger(maxRaw) ? String(maxRaw) : maxRaw.toFixed(1));
       if (cap) cap.textContent = `auto-on ${a}:00–${b}:00 & free (0p) hours` + (maxH ? ` · ${maxH}h max runtime` : "");
       if (rule) rule.textContent = `${a}–${b} + 0p`;
     }
