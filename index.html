@@ -580,7 +580,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-20 17:05";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-21 11:05";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1130,10 +1130,12 @@ async function loadLiveState(){
     renderImmersionUsage(imm.usage, (state.tariff || {}).offpeak_price_p);
     // Window text comes from the controller, not hardcoded here - these two captions have
     // drifted out of step with the actual rule twice now.
-    const t2 = state.tariff || {};
-    if (t2.immersion_start_hour != null && t2.immersion_end_hour != null){
-      const a = String(t2.immersion_start_hour).padStart(2,"0");
-      const b = String(t2.immersion_end_hour).padStart(2,"0");
+    // NB: not `t2` - that name is already taken at line ~1046 by the Easee phase current.
+    // Redeclaring it made the whole page script fail to parse.
+    const immT = state.tariff || {};
+    if (immT.immersion_start_hour != null && immT.immersion_end_hour != null){
+      const a = String(immT.immersion_start_hour).padStart(2,"0");
+      const b = String(immT.immersion_end_hour).padStart(2,"0");
       const cap = document.getElementById("imm-cap");
       const rule = document.getElementById("imm-rule");
       const maxH = (imm.max_runtime_s != null) ? Math.round(imm.max_runtime_s/3600) : null;
