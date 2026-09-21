@@ -561,6 +561,9 @@
   <footer class="footer">
     EDF Go Electric Display by Matt Lewis · Auto-refreshes every minute
     · <span id="build-stamp" style="opacity:.75"></span>
+    · <button type="button" id="change-pin-btn"
+              style="background:none;border:none;padding:0;font:inherit;color:var(--cyan);
+                     cursor:pointer;text-decoration:underline">Change PIN</button>
   </footer>
 </div>
 
@@ -572,7 +575,8 @@
     <div class="pin-help" id="pin-help"></div>
     <div id="pin-build" style="font-size:11px;color:var(--text-very-dim);margin:-8px 0 12px"></div>
     <input id="pin-input" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*"
-           autocomplete="off" name="fp-control-pin" aria-label="PIN" placeholder="••••">
+           maxlength="64" autocomplete="off" name="fp-control-pin" aria-label="PIN"
+           placeholder="••••">
     <div class="pin-err" id="pin-err"></div>
     <div class="pin-actions">
       <button type="button" class="pin-btn cancel" id="pin-cancel">Cancel</button>
@@ -581,7 +585,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-21 16:05";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-21 17:20";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -954,6 +958,51 @@ async function ensurePin(){
   });
   if (v == null) return false;
   cachePin(v); return true;
+}
+
+// Change the PIN. Two sequential prompts rather than one dialog with two fields, so the
+// existing single-instance pinModal (and its cancel/abort handling) is reused unchanged -
+// a second modal shape is exactly where the earlier modal-hijack bug came from.
+async function changePin(){
+  const chk = await rpc("is_pin_set", {});
+  if (!chk.ok || typeof chk.value !== "boolean"){
+    alert("Couldn't reach the server to check the PIN. Try again in a moment.");
+    return;
+  }
+  let current = null;
+  if (chk.value){
+    current = await pinModal({
+      title: "Change dashboard PIN",
+      help:  "First, enter your CURRENT PIN.",
+      onSubmit: async (pin) => {
+        const r = await rpc("verify_pin", { p_pin: pin });
+        if (r.value === true) return { ok:true };
+        if (r.ok) return { ok:false, error:"Wrong PIN — try again." };
+        return { ok:false, error:"Couldn't reach the server — check your connection." };
+      }
+    });
+    if (current == null) return;            // cancelled
+  }
+  const fresh = await pinModal({
+    title: "Choose a new PIN",
+    help:  "Use at least 8 digits. A 4-digit PIN can be guessed from this public page in " +
+           "minutes; every extra digit multiplies that by ten.",
+    onSubmit: async (pin) => {
+      if (pin && pin.length < 8 &&
+          !confirm("A PIN shorter than 8 digits is weak, and this page is public.\n\nUse it anyway?")){
+        return { ok:false, error:"Choose a longer PIN." };
+      }
+      const r = await rpc("set_control_pin", { p_new_pin: pin, p_current_pin: current });
+      if (r.value === "ok") return { ok:true };
+      if (r.value === "too_short")  return { ok:false, error:"Must be at least 4 characters." };
+      if (r.value === "bad_current")return { ok:false, error:"Current PIN no longer matches — start again." };
+      return { ok:false, error:"Couldn't change the PIN — try again." };
+    }
+  });
+  if (fresh == null) return;
+  cachePin(fresh);                           // so the next control change doesn't re-prompt
+  const st = document.getElementById("charge-updated");
+  if (st){ st.textContent = "PIN changed"; st.style.color = "var(--green)"; }
 }
 
 async function writeControl(key, value){
@@ -1509,6 +1558,9 @@ async function cancelSchedule(device){
 }
 
 async function init(){
+  const cpb = document.getElementById("change-pin-btn");
+  if (cpb) cpb.addEventListener("click", function(){ changePin(); });
+
   checkForUpdate();
   // A kiosk tab stays open for days; without a recurring check it keeps running the build it
   // happened to load. Also check when the tab is brought back to the foreground.
