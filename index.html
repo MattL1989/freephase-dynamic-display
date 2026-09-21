@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDF Go Electric — ST15 0WL</title>
+<meta name="robots" content="noindex, nofollow">
+<title>EDF Go Electric</title>
 <style>
   :root {
     color-scheme: dark;
@@ -332,7 +333,7 @@
 <body>
 <div class="container">
   <header class="header">
-    <div class="location"><strong>EDF Go Electric</strong> — ST15 0WL</div>
+    <div class="location"><strong>EDF Go Electric</strong> — Home</div>
     <div class="clock" id="clock"><span class="time">--:--:--</span><span class="date">—</span></div>
     <div id="hdr-build" style="font-size:10px;color:var(--text-very-dim);letter-spacing:.08em"></div>
   </header>
@@ -580,14 +581,16 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-21 11:05";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-21 14:20";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
 
 const STANDING_CHARGE_FALLBACK = 59.71;   // only used if the Pi has not reported one yet
 let currentTariff = null;
-let staleSince = 0;                  // minutes since the Pi last published, when stale            // tariff block published by the Pi (rates, period, free hours)
+let staleSince = 0;                  // minutes since the Pi last published, when stale
+let lastGoodFetchAt = null;          // wall clock of the last SUCCESSFUL read, so a page that
+                                     // loses the network still ages rather than freezing            // tariff block published by the Pi (rates, period, free hours)
 let lastTuyaVoltage = null;          // remember most recent voltage we saw so we don't dash out
 let lastTuyaPhaseA  = null;          // last real V/A/kW frame from the breaker (phase_a is intermittent)
 
@@ -630,10 +633,12 @@ async function checkForUpdate(){
       banner.textContent = `New version available (${m[1]}) — tap to update`;
       banner.onclick = () => location.replace(location.pathname + "?v=" + encodeURIComponent(m[1]));
     }
+    // Store WHICH build we auto-reloaded into, not a boolean. A boolean meant that once a
+    // tab had healed once, no later build could ever heal it again.
     let already = null;
-    try { already = sessionStorage.getItem("fp_autoreload"); } catch(_) {}
-    if (!already){
-      try { sessionStorage.setItem("fp_autoreload","1"); } catch(_) {}
+    try { already = sessionStorage.getItem("fp_autoreload_build"); } catch(_) {}
+    if (already !== m[1]){
+      try { sessionStorage.setItem("fp_autoreload_build", m[1]); } catch(_) {}
       location.replace(location.pathname + "?v=" + encodeURIComponent(m[1]));
     }
   } catch(_) {}
@@ -671,6 +676,37 @@ function rateCard(elId, cls, name, price, time, unit){
     '<div class="band-time">' + time + '</div>';
 }
 
+function lastKnownClock(t){
+  const iso = (t && t.updated_at) || null;
+  const ms = iso ? new Date(iso).getTime() : lastGoodFetchAt;
+  if (!ms) return null;
+  return new Date(ms).toLocaleTimeString("en-GB",
+    {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
+}
+
+// Staleness must advance on a client timer too. fetchJSON returns null on a network failure
+// and loadLiveState returns early, so without this a tablet that lost Wi-Fi at 23:40 would
+// still show "Updated 23:40" and a green charging card at 07:00.
+function ageTick(){
+  if (!lastGoodFetchAt) return;
+  const since = Math.floor((Date.now() - lastGoodFetchAt) / 60000);
+  if (since >= 2 && since > staleSince){
+    staleSince = since;
+    renderTariff(currentTariff);
+    const upd = document.getElementById("charge-updated");
+    if (upd){
+      upd.textContent = "No contact with the Pi for " + fmtAge(since);
+      upd.style.color = "var(--red)";
+    }
+  }
+}
+
+function fmtAge(mins){
+  if (mins < 60) return mins + " min";
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h + "h " + String(m).padStart(2,"0") + "m";
+}
+
 function renderTariff(t){
   const card = document.getElementById("now-card");
   const pill = document.getElementById("charging-pill");
@@ -683,6 +719,24 @@ function renderTariff(t){
     return;
   }
   const period = t.period || "unknown";
+
+  // Refuse to assert a rate we cannot stand behind. A frozen payload used to keep painting a
+  // green "OFF-PEAK 6.99p" card for hours after the Pi died.
+  const unusable = (staleSince >= 3) || (t.price_p == null) || (period === "unknown");
+  if (unusable){
+    card.className = "now-card";                      // neutral, not the peak-coloured red
+    const seen = lastKnownClock(t);
+    document.getElementById("now-band-name").textContent =
+      (period === "unknown" && staleSince < 3) ? "NO PRICE" : "STALE";
+    document.getElementById("now-price").textContent = "\u2014";
+    document.getElementById("now-context").textContent =
+      (period === "unknown" && staleSince < 3)
+        ? "The Pi has no rate data yet \u2014 it is following the clock window"
+        : ("Pi not reporting" + (seen ? " \u00b7 last seen " + seen : ""));
+    pill.className = "charging-pill"; pill.textContent = "Pi not reporting";
+    return;
+  }
+
   const isFree = (period === "free");
   const isOff  = (period === "offpeak");
   card.className = "now-card " + ((isFree || isOff) ? "green" : "red");
@@ -690,6 +744,12 @@ function renderTariff(t){
     isFree ? "FREE" : (isOff ? "OFF-PEAK" : (period === "peak" ? "PEAK" : "\u2014"));
   document.getElementById("now-price").textContent =
     (t.price_p != null) ? Number(t.price_p).toFixed(2) : "\u2014";
+
+  // The Pi tells us when it is running on the clock because EDF's feed is unreachable. Say
+  // so rather than presenting a contracted rate as a measured one.
+  if (t.price_source === "clock_fallback"){
+    document.getElementById("now-band-name").textContent += " (no feed)";
+  }
 
   const startH = String(t.offpeak_start_hour == null ? 23 : t.offpeak_start_hour).padStart(2,"0");
   const endH   = String(t.offpeak_end_hour   == null ? 6  : t.offpeak_end_hour  ).padStart(2,"0");
@@ -701,7 +761,7 @@ function renderTariff(t){
         : '<span class="delta above">Peak rate \u2014 chargers hold until ' + startH + ':00</span>');
   document.getElementById("now-meta").innerHTML =
     (t.name || "Go Electric") + " \u00b7 off-peak " + startH + ":00\u2013" + endH + ":00" +
-    (staleSince >= 3 ? ' \u00b7 <b style="color:var(--red)">data ' + staleSince + ' min old</b>' : "");
+    (staleSince >= 3 ? ' \u00b7 <b style="color:var(--red)">data ' + fmtAge(staleSince) + ' old</b>' : "");
 
   const nb = document.getElementById("next-band");
   if (t.next_change_at && t.next_change_price_p != null){
@@ -994,6 +1054,13 @@ async function loadLiveState(){
 
     // The Pi publishes the whole tariff picture (current rate, period, next change and any
     // free 0p hours), derived from EDF's published rate periods - so nothing is hardcoded.
+    // Age must be known BEFORE renderTariff, otherwise the hero always describes the
+    // previous poll's freshness and a cold load against a dead Pi shows no stale cue at all.
+    lastGoodFetchAt = Date.now();
+    if (state.updated_at){
+      const ageMin0 = Math.floor((Date.now() - new Date(state.updated_at).getTime()) / 60000);
+      staleSince = (ageMin0 >= 3) ? ageMin0 : 0;
+    }
     currentTariff = state.tariff || null;
     renderTariff(currentTariff);
 
@@ -1026,7 +1093,7 @@ async function loadLiveState(){
       const ageMin = Math.floor((Date.now() - d.getTime()) / 60000);
       const clock = d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
       if (ageMin >= 3){
-        upd.textContent = "Updated " + clock + " \u00b7 STALE (" + ageMin + " min old)";
+        upd.textContent = "Updated " + clock + " \u00b7 STALE (" + fmtAge(ageMin) + " old)";
         upd.style.color = "var(--red)";
         staleSince = ageMin;
       } else {
@@ -1440,6 +1507,13 @@ async function cancelSchedule(device){
 
 async function init(){
   checkForUpdate();
+  // A kiosk tab stays open for days; without a recurring check it keeps running the build it
+  // happened to load. Also check when the tab is brought back to the foreground.
+  setInterval(checkForUpdate, 30 * 60 * 1000);
+  document.addEventListener("visibilitychange", function(){
+    if (!document.hidden) checkForUpdate();
+  });
+  setInterval(ageTick, 30_000);
   await loadOverrides();
   initWheels();
   await loadSchedules();
