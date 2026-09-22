@@ -585,7 +585,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-21 17:20";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-22 09:40";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1314,6 +1314,12 @@ function renderImmersionUsage(usage, offpeakPence){
     if (ln.element_hours_est != null) txt += ` · element ~${ln.element_hours_est}h`;
     const kwh = (ln.est_kwh_calibrated != null) ? ln.est_kwh_calibrated : ln.est_kwh_max;
     txt += ` · ≈${kwh} kWh`;
+    // Show the measured night-to-night spread. A single number implies a precision this
+    // plug cannot support - it has no meter, and real demand varied 0.95-2.05h of element
+    // time across the nights the half-hourly data could resolve.
+    if (ln.est_kwh_low != null && ln.est_kwh_high != null && ln.est_kwh_high > ln.est_kwh_low){
+      txt += ` (${ln.est_kwh_low}–${ln.est_kwh_high})`;
+    }
     const cost = fmtCost(kwh, offpeakPence);
     if (cost) txt += ` · ≈${cost}`;
     mainEl.textContent = txt;
@@ -1335,7 +1341,7 @@ function renderImmersionUsage(usage, offpeakPence){
   if (usage.assumed_power_w) bits.push(`${usage.assumed_power_w} W element at ${usage.supply_volts} V`);
   bits.push("this plug has no meter — kWh is estimated, not measured");
   if (ln && ln.est_kwh_calibrated != null && ln.est_kwh_max != null){
-    bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; ceiling if the element ran the whole window would be ${ln.est_kwh_max} kWh`);
+    bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; the figures in brackets are the measured night-to-night spread, not error bars; ceiling if the element ran the whole window would be ${ln.est_kwh_max} kWh`);
     bits.push("measured across nights of normal hot-water use, so it already includes showers");
   } else {
     bits.push("upper bound: the cylinder thermostat can cut the element while the plug stays on");
