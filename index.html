@@ -585,7 +585,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-22 09:40";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-09-25 06:30";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1231,7 +1231,7 @@ async function loadLiveState(){
     document.getElementById("imm-switch").textContent =
       (imm.switch_on === true ? "ON" : imm.switch_on === false ? "OFF" : "—");
     document.getElementById("imm-switch-sub").textContent =
-      (imm.online === false ? "device offline" : "Tuya smart plug (192.168.1.160)");
+      (imm.online === false ? "device offline" : "Tuya metering plug (192.168.1.235)");
     document.getElementById("imm-remaining").textContent =
       (imm.switch_on === true && imm.remaining_s != null) ? fmtDuration(imm.remaining_s) : "—";
     document.getElementById("imm-remaining-sub").textContent =
@@ -1299,63 +1299,81 @@ function renderImmersionUsage(usage, offpeakPence){
     return;
   }
 
-  // Prefer the whole off-peak window: the plug's own 1-hour timer splits a night into
-  // several sessions, so "last session" alone would show a fragment.
+  const tm = (iso) => new Date(iso).toLocaleTimeString("en-GB",
+    {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
+  const dy = (iso) => new Date(iso).toLocaleDateString("en-GB",
+    {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
+
+  // ---- last completed night --------------------------------------------------------------
+  // Since 2026-09-24 the plug meters its own energy. When a night was fully metered we show
+  // what it actually used - no estimates, no ranges. Older or partly-metered nights still
+  // fall back to the calibrated estimate, and say so.
   const ln = usage.last_window || usage.last_night;
+  let measuredNight = false;
   if (ln && ln.on_minutes != null){
-    const from = new Date(ln.started).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
-    const to   = new Date(ln.ended).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
-    const day  = new Date(ln.ended).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
     const label = usage.last_window ? "Last night" : "Last run";
-    const runs  = (ln.sessions && ln.sessions > 1) ? ` (${ln.sessions} runs)` : "";
-    // Plug-on time is measured; energy is not. Lead with the calibrated figure where we have
-    // one — the raw ceiling ran ~3.7x high against real meter data and read as fact.
-    let txt = `${label} ${day} · ${from}–${to} · plug on ${fmtMins(ln.on_minutes)}${runs}`;
-    if (ln.element_hours_est != null) txt += ` · element ~${ln.element_hours_est}h`;
-    const kwh = (ln.est_kwh_calibrated != null) ? ln.est_kwh_calibrated : ln.est_kwh_max;
-    txt += ` · ≈${kwh} kWh`;
-    // Show the measured night-to-night spread. A single number implies a precision this
-    // plug cannot support - it has no meter, and real demand varied 0.95-2.05h of element
-    // time across the nights the half-hourly data could resolve.
-    if (ln.est_kwh_low != null && ln.est_kwh_high != null && ln.est_kwh_high > ln.est_kwh_low){
-      txt += ` (${ln.est_kwh_low}–${ln.est_kwh_high})`;
+    let txt = `${label} ${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
+    if (ln.measured && ln.measured_kwh != null){
+      measuredNight = true;
+      txt += ` · heated ${fmtMins(ln.element_minutes)}`;
+      if (ln.element_last_at) txt += `, thermostat off at ${tm(ln.element_last_at)}`;
+      txt += ` · ${Number(ln.measured_kwh).toFixed(2)} kWh`;
+      const cost = fmtCost(ln.measured_kwh, offpeakPence);
+      if (cost) txt += ` · ${cost}`;
+    } else {
+      const runs = (ln.sessions && ln.sessions > 1) ? ` (${ln.sessions} runs)` : "";
+      txt += ` · plug on ${fmtMins(ln.on_minutes)}${runs}`;
+      if (ln.element_hours_est != null) txt += ` · element ~${ln.element_hours_est}h`;
+      const kwh = (ln.est_kwh_calibrated != null) ? ln.est_kwh_calibrated : ln.est_kwh_max;
+      txt += ` · ≈${kwh} kWh`;
+      if (ln.est_kwh_low != null && ln.est_kwh_high != null && ln.est_kwh_high > ln.est_kwh_low){
+        txt += ` (${ln.est_kwh_low}–${ln.est_kwh_high})`;
+      }
+      const cost = fmtCost(kwh, offpeakPence);
+      if (cost) txt += ` · ≈${cost}`;
     }
-    const cost = fmtCost(kwh, offpeakPence);
-    if (cost) txt += ` · ≈${cost}`;
     mainEl.textContent = txt;
   } else {
     mainEl.textContent = "No completed run recorded yet";
   }
 
+  // ---- live, while the plug is on ---------------------------------------------------------
   if (usage.session_active){
-    let live = `Running now · ${fmtMins(usage.session_on_minutes)} so far · ≈${usage.session_est_kwh} kWh`;
-    const lcost = fmtCost(usage.session_est_kwh, offpeakPence);
-    if (lcost) live += ` · ≈${lcost}`;
+    let live;
+    if (usage.live_power_w != null){
+      const heating = usage.live_power_w >= 300;
+      live = heating
+        ? `Heating now · ${(usage.live_power_w / 1000).toFixed(2)} kW`
+        : `Plug on · element off (cylinder at temperature)`;
+      live += ` · ${Number(usage.session_measured_kwh || 0).toFixed(2)} kWh so far`;
+      const lcost = fmtCost(usage.session_measured_kwh, offpeakPence);
+      if (lcost) live += ` · ${lcost}`;
+    } else {
+      live = `Running now · ${fmtMins(usage.session_on_minutes)} so far · meter not reporting`;
+    }
     liveEl.textContent = live;
     liveEl.hidden = false;
   } else {
     liveEl.hidden = true;
   }
 
+  // ---- note -------------------------------------------------------------------------------
   const bits = [];
-  if (usage.assumed_power_w) bits.push(`${usage.assumed_power_w} W element at ${usage.supply_volts} V`);
-  bits.push("this plug has no meter — kWh is estimated, not measured");
-  if (ln && ln.est_kwh_calibrated != null && ln.est_kwh_max != null){
-    bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; the figures in brackets are the measured night-to-night spread, not error bars; ceiling if the element ran the whole window would be ${ln.est_kwh_max} kWh`);
-    bits.push("measured across nights of normal hot-water use, so it already includes showers");
-  } else {
-    bits.push("upper bound: the cylinder thermostat can cut the element while the plug stays on");
-  }
-  noteEl.textContent = bits.join(" · ");
-
-  if (ln && ln.exceeds_cylinder && ln.cylinder_cold_to_60_kwh && ln.est_kwh_calibrated == null){
-    noteEl.textContent += ` · above the cylinder's cold-to-60 °C capacity (${ln.cylinder_cold_to_60_kwh} kWh), so the thermostat almost certainly cut the element for part of the night`;
+  if (measuredNight){
+    bits.push("measured by the plug's own meter");
+    if (ln.peak_w) bits.push(`element ${Math.round(ln.peak_w)} W`);
+    if (ln.metered_pct != null) bits.push(`${ln.metered_pct}% of the run metered`);
+  } else if (ln && ln.est_kwh_calibrated != null){
+    bits.push("estimated — this night predates the metering plug or was only partly metered");
+    bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; the brackets are the measured night-to-night spread, not error bars`);
   }
   if (ln && ln.end_reason){
-    const why = {window_end:"ended when off-peak finished", max_runtime:"stopped by the 6h safety cutoff",
-                 switched_off:"switched off", startup:"cut by a controller restart"}[ln.end_reason] || ln.end_reason;
-    noteEl.textContent += ` · last run ${why}`;
+    const why = {window_end:"ended when the hot-water window closed", max_runtime:"stopped by the safety cutoff",
+                 switched_off:"switched off", startup:"interrupted by a controller restart",
+                 before_window:"switched off before the window"}[ln.end_reason] || ln.end_reason;
+    bits.push(`last run ${why}`);
   }
+  noteEl.textContent = bits.join(" · ");
 }
 
 // ------------------------------------------------------------------
