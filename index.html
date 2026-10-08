@@ -178,6 +178,14 @@
   .imm-usage-live{font-size:14px;color:var(--purple);font-weight:600;margin-top:5px;
     font-variant-numeric:tabular-nums}
   .imm-usage-note{font-size:12px;color:var(--text-dim);margin-top:7px;line-height:1.45}
+/* Charge cost strip, one per charger. Priced by the Pi at the rate in force when each kWh
+     was drawn, so a charge that crosses 23:00 / 06:00 or a free hour is split, not averaged. */
+  .charge-cost{margin-top:18px;padding:16px 18px;border-radius:14px;
+    background:rgba(34,211,238,0.05);border:1px solid rgba(34,211,238,0.22)}
+  .charge-cost-main{font-size:16px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+  .charge-cost-live{font-size:14px;color:var(--cyan);font-weight:600;margin-top:5px;
+    font-variant-numeric:tabular-nums}
+  .charge-cost-note{font-size:12px;color:var(--text-dim);margin-top:7px;line-height:1.45}
 /* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
@@ -444,6 +452,11 @@
           <div class="metric-sub">BEV charger total</div>
         </div>
       </div>
+      <div class="charge-cost">
+        <div class="charge-cost-main" id="easee-cost-main">No charge recorded yet</div>
+        <div class="charge-cost-live" id="easee-cost-live" hidden></div>
+        <div class="charge-cost-note" id="easee-cost-note"></div>
+      </div>
     </div>
 
     <!-- TUYA 3.7 kW BREAKER -->
@@ -508,13 +521,18 @@
         <div class="charge-metric">
           <div class="metric-label">Session</div>
           <div class="metric-value"><span id="tuya-session">—</span><span class="unit">kWh</span></div>
-          <div class="metric-sub">since breaker on</div>
+          <div class="metric-sub" id="tuya-session-sub">since breaker on</div>
         </div>
         <div class="charge-metric">
           <div class="metric-label">Lifetime</div>
           <div class="metric-value"><span id="tuya-lifetime">—</span><span class="unit">kWh</span></div>
           <div class="metric-sub">POWER16 charger total</div>
         </div>
+      </div>
+      <div class="charge-cost">
+        <div class="charge-cost-main" id="breaker-cost-main">No charge recorded yet</div>
+        <div class="charge-cost-live" id="breaker-cost-live" hidden></div>
+        <div class="charge-cost-note" id="breaker-cost-note"></div>
       </div>
     </div>
 
@@ -585,7 +603,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-09-25 06:30";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-08 18:00";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1201,7 +1219,15 @@ async function loadLiveState(){
       if (powerTile)   powerTile.classList.toggle("stale", !freshPhaseA);
       if (currentTile) currentTile.classList.toggle("stale", !freshPhaseA);
     }
-    document.getElementById("tuya-session").textContent  = fmtNum(tuya.session_kwh, 3);
+    const brkCs = (state.charge_sessions || {}).breaker;
+    const brkSess = brkCs ? (brkCs.active || brkCs.last) : null;
+    if (brkSess){
+      document.getElementById("tuya-session").textContent = fmtNum(brkSess.kwh, 2);
+      document.getElementById("tuya-session-sub").textContent = brkCs.active ? "this charge" : "last charge";
+    } else {
+      document.getElementById("tuya-session").textContent = fmtNum(tuya.session_kwh, 3);
+      document.getElementById("tuya-session-sub").textContent = "since breaker on";
+    }
     document.getElementById("tuya-lifetime").textContent = fmtNum(tuya.total_kwh, 2);
 
     // Fault banner: always visible. Green ● when healthy, red ⚠ when any alarm bit is active,
@@ -1244,6 +1270,8 @@ async function loadLiveState(){
       document.getElementById("imm-since").textContent = "—";
     }
     renderImmersionUsage(imm.usage, (state.tariff || {}).offpeak_price_p);
+    renderChargeCost("easee",   (state.charge_sessions || {}).easee,   !!state.charge_sessions);
+    renderChargeCost("breaker", (state.charge_sessions || {}).breaker, !!state.charge_sessions);
     // Window text comes from the controller, not hardcoded here - these two captions have
     // drifted out of step with the actual rule twice now.
     // NB: not `t2` - that name is already taken at line ~1046 by the Easee phase current.
@@ -1284,6 +1312,76 @@ function fmtMins(mins){
   const m = Math.round(mins);
   const h = Math.floor(m / 60);
   return h ? `${h}h ${String(m % 60).padStart(2,"0")}m` : `${m}m`;
+}
+
+// ------------------------------------------------------------------
+// CHARGE COST. The Pi prices every slice of energy at the rate in force when it was drawn
+// (published EDF periods, including any 0p hours) and groups it into sessions, so a charge
+// that crosses a price window shows each part at its own rate.
+// ------------------------------------------------------------------
+function fmtPence(p){
+  if (p == null) return null;
+  return p < 100 ? `${p.toFixed(1)}p` : `£${(p / 100).toFixed(2)}`;
+}
+
+function fmtRateP(p){
+  return p <= 0 ? "free (0p)" : `${Number(p.toFixed(2))}p`;
+}
+
+function chargeRatesText(sess){
+  const rs = (sess.rates || []).filter(r => r.kwh >= 0.005);
+  if (!rs.length) return "";
+  if (rs.length === 1) return `all at ${fmtRateP(rs[0].price_p)}/kWh`;
+  return rs.map(r => r.price_p <= 0
+    ? `${r.kwh.toFixed(2)} kWh free (0p hour)`
+    : `${r.kwh.toFixed(2)} kWh at ${fmtRateP(r.price_p)} (${fmtPence(r.cost_p)})`).join(" + ");
+}
+
+// A session with energy drawn while no rate was known has a lower-bound cost until repriced.
+function chargeCostText(sess){
+  return (sess.cost_complete === false ? "at least " : "") + fmtPence(sess.cost_p);
+}
+
+function renderChargeCost(key, cs, reporting){
+  const mainEl = document.getElementById(`${key}-cost-main`);
+  const liveEl = document.getElementById(`${key}-cost-live`);
+  const noteEl = document.getElementById(`${key}-cost-note`);
+  if (!mainEl) return;
+  if (!reporting || !cs){
+    mainEl.textContent = "Charge costs not reporting";
+    liveEl.hidden = true;
+    noteEl.textContent = "";
+    return;
+  }
+  const tm = (iso) => new Date(iso).toLocaleTimeString("en-GB",
+    {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
+  const dy = (iso) => new Date(iso).toLocaleDateString("en-GB",
+    {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
+
+  const l = cs.last, a = cs.active;
+  mainEl.textContent = l
+    ? `Last charge ${dy(l.started)} · ${tm(l.started)}–${tm(l.ended)} · ${l.kwh.toFixed(2)} kWh · ${chargeCostText(l)}`
+    : "No completed charge recorded yet";
+
+  if (a){
+    let live = `Charging now · since ${tm(a.started)} · ${a.kwh.toFixed(2)} kWh · ${chargeCostText(a)} so far`;
+    if ((a.rates || []).filter(r => r.kwh >= 0.005).length > 1) live += ` · ${chargeRatesText(a)}`;
+    liveEl.textContent = live;
+    liveEl.hidden = false;
+  } else {
+    liveEl.hidden = true;
+  }
+
+  const bits = [];
+  const shown = l || a;
+  if (shown){
+    const rt = chargeRatesText(shown);
+    if (rt) bits.push(rt);
+    bits.push("priced at the rate in force when each kWh was drawn");
+    if (shown.gap_kwh >= 0.05) bits.push(`${shown.gap_kwh.toFixed(2)} kWh fell in a gap between readings and was priced pro rata`);
+    if (shown.unpriced_kwh >= 0.005) bits.push(`${shown.unpriced_kwh.toFixed(2)} kWh had no published rate and is not in the cost`);
+  }
+  noteEl.textContent = bits.join(" · ");
 }
 
 function renderImmersionUsage(usage, offpeakPence){
