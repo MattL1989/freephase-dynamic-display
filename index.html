@@ -603,7 +603,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-08 18:00";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-15 12:00";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1364,7 +1364,11 @@ function renderChargeCost(key, cs, reporting){
     : "No completed charge recorded yet";
 
   if (a){
-    let live = `Charging now · since ${tm(a.started)} · ${a.kwh.toFixed(2)} kWh · ${chargeCostText(a)} so far`;
+    const lead = a.unplugged ? "Unplugged · finalising"
+      : (a.charging === false)
+        ? (key === "easee" ? "Plugged in · not charging" : "Paused")
+        : "Charging now";
+    let live = `${lead} · since ${tm(a.started)} · ${a.kwh.toFixed(2)} kWh · ${chargeCostText(a)} so far`;
     if ((a.rates || []).filter(r => r.kwh >= 0.005).length > 1) live += ` · ${chargeRatesText(a)}`;
     liveEl.textContent = live;
     liveEl.hidden = false;
