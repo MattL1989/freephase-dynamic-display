@@ -73,7 +73,7 @@
 
   /* Small per-device status pills (hero card) */
   .device-pills{display:flex;flex-direction:column;gap:6px;margin-top:10px}
-  .device-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;
+  .device-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;text-decoration:none;
     font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
     background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim);
     align-self:flex-end;font-variant-numeric:tabular-nums}
@@ -122,12 +122,25 @@
   .band-delta .below{color:var(--green);font-weight:600}
   .band-delta .above{color:var(--red);font-weight:600}
   .band.pending{opacity:0.45;border-style:dashed}
-/* CHARGING PANEL */
-  .charge-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
-    border-radius:22px;padding:32px 36px}
+/* DEVICE CARDS */
+  .charge-panel{margin-top:48px}
   .charge-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
   .charge-title{font-size:14px;letter-spacing:0.22em;text-transform:uppercase;color:var(--text-dim);font-weight:700}
+  .charge-panel > .charge-head .charge-title{margin:0;font-size:20px;letter-spacing:0;text-transform:none;color:var(--text)}
   .charge-updated{font-size:12px;color:var(--text-very-dim);font-variant-numeric:tabular-nums}
+  .device-easee{--device-color:#7aa9ff;--device-rgb:122,169,255}
+  .device-breaker{--device-color:#ffad78;--device-rgb:255,173,120}
+  .device-immersion{--device-color:var(--purple);--device-rgb:192,132,252}
+  .device-nav{position:sticky;top:12px;z-index:10;display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;
+    padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:16px}
+  .device-nav a{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:42px;
+    padding:10px 12px;border:1px solid rgba(var(--device-rgb),0.3);border-radius:10px;
+    background:rgba(var(--device-rgb),0.07);color:var(--text);text-decoration:none;font-size:13px;font-weight:700}
+  .device-nav a::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--device-color);flex-shrink:0}
+  .device-nav a:hover{background:rgba(var(--device-rgb),0.16)}
+  .device-nav a:focus-visible,.device-pill:focus-visible,.sched-head:focus-visible,.override-control button:focus-visible{
+    outline:2px solid var(--cyan);outline-offset:4px}
+  .devices-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}
   .charge-mode-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;
     font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
     background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)}
@@ -143,13 +156,13 @@
      frozen values can never read as a live measurement. */
   .charge-grid.stale{opacity:0.45}
   .charge-metric.stale{opacity:0.45}
-  .charge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px}
-  .charge-metric{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+  .charge-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .charge-metric{min-width:0;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:16px 14px}
   .metric-label{font-size:11px;letter-spacing:0.18em;color:var(--text-very-dim);text-transform:uppercase;font-weight:600;margin-bottom:8px}
-  .metric-value{font-size:34px;font-weight:800;line-height:1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
-  .metric-value.big{font-size:42px}
-  .metric-value .unit{font-size:14px;color:var(--text-dim);margin-left:4px;font-weight:500}
-  .metric-sub{font-size:12px;color:var(--text-dim);margin-top:6px;font-variant-numeric:tabular-nums}
+  .metric-value{font-size:28px;font-weight:800;line-height:1.15;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .metric-value.big{font-size:32px}
+  .metric-value .unit{display:inline-block;font-size:12px;color:var(--text-dim);margin-left:3px;font-weight:500}
+  .metric-sub{font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.45;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
   /* FAULT BANNER (Tuya alarm flags) */
   .fault-banner{margin:0 0 16px;padding:12px 18px;border-radius:14px;
     font-size:13px;font-weight:600;letter-spacing:0.03em;
@@ -161,11 +174,41 @@
   .fault-banner.unknown{background:var(--surface-2);border:1px solid var(--border);color:var(--text-dim)}
   .fault-banner.unknown::before{content:"○";font-size:14px;color:var(--text-very-dim)}
 
-  .charge-section{margin-top:24px}
-  .charge-section:first-of-type{margin-top:0}
-  .charge-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-  .charge-section-title{font-size:18px;font-weight:700;letter-spacing:0.02em;color:var(--text)}
-  .charge-cap{font-size:13px;color:var(--text-dim);font-weight:500;margin-left:6px;letter-spacing:0}
+  .charge-section{min-width:0;scroll-margin-top:100px;padding:24px 20px;background:var(--surface);
+    border:1px solid rgba(var(--device-rgb),0.35);border-top:4px solid var(--device-color);border-radius:22px;
+    background-image:linear-gradient(180deg,rgba(var(--device-rgb),0.07),transparent 180px)}
+  .charge-section:target{outline:2px solid var(--device-color);outline-offset:4px}
+  .charge-section-head{padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+  .device-identity{display:flex;align-items:center;gap:12px}
+  .device-icon{display:grid;place-items:center;width:42px;height:42px;flex-shrink:0;border-radius:12px;
+    color:var(--device-color);background:rgba(var(--device-rgb),0.12);border:1px solid rgba(var(--device-rgb),0.25)}
+  .device-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .device-kind{font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--device-color);font-weight:700}
+  .charge-section-title{font-size:21px;line-height:1.25;font-weight:750;letter-spacing:0;color:var(--text);margin:3px 0 0}
+  .charge-cap{display:block;font-size:12px;line-height:1.6;color:var(--text-dim);font-weight:500;margin:12px 0 16px;min-height:39px}
+  .automation-label{font-size:13px;color:var(--text-dim)}
+  .override-status:empty{display:none}
+  .charge-section .lc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .charge-section .lc-stats > div:last-child{grid-column:1 / -1}
+  .charge-section .lc-val{font-size:24px;white-space:normal;overflow-wrap:anywhere}
+  .charge-section .charge-cost{background:rgba(var(--device-rgb),0.05);border-color:rgba(var(--device-rgb),0.22)}
+  @media (max-width:1100px){
+    .devices-grid{grid-template-columns:1fr;gap:28px}
+    .charge-cap{min-height:0}
+  }
+  @media (min-width:721px) and (max-width:1100px){
+    .charge-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .charge-section .lc-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .charge-section .lc-stats > div:last-child{grid-column:auto}
+  }
+  @media (max-width:720px){
+    .charge-section{padding:22px 16px;scroll-margin-top:90px}
+    .device-nav{top:8px;gap:6px;padding:6px}
+    .device-nav a{font-size:12px;padding:10px 6px;gap:6px}
+    .charge-section-title{font-size:20px}
+    .metric-value{font-size:26px}
+    .metric-value.big{font-size:28px}
+  }
 
   /* Immersion section uses a purple accent so it's visually distinct from the EV charger sections */
   .charge-mode-pill.imm-on{color:var(--purple);border-color:rgba(192,132,252,0.45);
@@ -275,12 +318,13 @@
   .toggle-status.err{color:var(--red)}
 
   /* PER-DEVICE MANUAL OVERRIDE (Auto / On / Off segmented control) */
-  .section-controls{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+  .section-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;min-height:54px}
+  .section-controls .charge-mode-pill{font-size:11px;padding:8px 10px;letter-spacing:0.04em}
   .override-control{display:inline-flex;gap:4px;background:var(--surface-2);
     border:1px solid var(--border);border-radius:999px;padding:4px}
   .override-control button{border:none;background:transparent;color:var(--text-dim);
     font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
-    padding:7px 15px;border-radius:999px;cursor:pointer;transition:.15s ease;
+    padding:9px 10px;min-width:44px;min-height:44px;border-radius:999px;cursor:pointer;transition:.15s ease;
     font-variant-numeric:tabular-nums}
   .override-control button:hover{color:var(--text)}
   .override-control button.active[data-mode="auto"]{background:rgba(34,211,238,0.16);color:var(--cyan)}
@@ -291,19 +335,24 @@
   .override-status.err{color:var(--red)}
 
   /* ONE-SHOT CHARGE SCHEDULE + SCROLL-WHEEL TIME PICKER */
-  .sched{margin:4px 0 18px;padding:16px 18px;background:var(--surface-2);
+  .sched{margin:18px 0 0;background:var(--surface-2);
     border:1px solid var(--border);border-radius:16px}
-  .sched-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-    flex-wrap:wrap;margin-bottom:14px}
-  .sched-title{font-size:13px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim)}
+  .sched-head{display:flex;align-items:center;gap:10px;padding:16px 14px;cursor:pointer;list-style:none;border-radius:16px}
+  .sched-head::-webkit-details-marker{display:none}
+  .sched-head::after{content:'+';font-size:20px;color:var(--text-dim);margin-left:auto}
+  .sched[open] > .sched-head::after{content:'−'}
+  .sched-title{font-size:12px;font-weight:700;color:var(--text-dim)}
+  .sched-content{padding:0 14px 16px}
+  .sched-content .sched-hint{margin:0 0 14px;line-height:1.5}
   .sched-hint{display:block;font-size:11px;font-weight:500;letter-spacing:0.02em;
     text-transform:none;color:var(--text-very-dim);margin-top:3px}
   .sched-state{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
     padding:5px 12px;border-radius:999px;background:var(--surface);
     border:1px solid var(--border);color:var(--text-dim);white-space:nowrap}
+  .sched-head .sched-state{white-space:normal;overflow-wrap:anywhere;font-size:11px;letter-spacing:0.03em}
   .sched-state.armed{color:var(--cyan);border-color:rgba(34,211,238,0.45);background:rgba(34,211,238,0.10)}
   .sched-state.active{color:var(--green);border-color:rgba(30,229,96,0.45);background:rgba(30,229,96,0.10)}
-  .sched-body{display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap}
+  .sched-body{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
   .wheel-block{display:flex;flex-direction:column;gap:6px}
   .wheel-label{font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--text-very-dim);font-weight:600}
   .wheels{display:flex;align-items:center;gap:2px;position:relative;
@@ -320,9 +369,9 @@
     color:var(--text-very-dim);font-variant-numeric:tabular-nums;cursor:pointer;transition:color .12s}
   .wheel-item.sel{color:var(--cyan);font-size:21px}
   .wheel-sep{font-size:19px;font-weight:700;color:var(--text-dim)}
-  .sched-actions{display:flex;gap:8px;align-items:center}
+  .sched-actions{display:flex;gap:8px;align-items:center;width:100%}
   .sched-btn{border:none;border-radius:12px;padding:12px 20px;font-size:13px;font-weight:700;
-    letter-spacing:0.08em;text-transform:uppercase;cursor:pointer}
+    letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;flex:1}
   .sched-btn.arm{background:var(--cyan);color:var(--bg)}
   .sched-btn.arm:hover{filter:brightness(1.08)}
   .sched-btn.cancel{background:transparent;color:var(--text-dim);border:1px solid var(--border)}
@@ -335,12 +384,6 @@
     .sched-actions{width:100%}
     .sched-btn{flex:1}
   }
-  @media (max-width:720px){
-    .charge-section-head{align-items:flex-start}
-    .section-controls{align-items:flex-start}
-    .override-status{text-align:left}
-  }
-
   /* UPDATE BANNER */
   #update-banner{position:fixed;left:0;right:0;top:0;z-index:1100;cursor:pointer;
     background:var(--cyan);color:var(--bg);font-weight:800;font-size:14px;
@@ -408,9 +451,9 @@
       <div class="now-side">
         <div class="charging-pill" id="charging-pill">Charging -</div>
         <div class="device-pills">
-          <div class="device-pill off" id="easee-mini">Easee One Charger &middot; -</div>
-          <div class="device-pill off" id="tuya-mini">POWER16 Charger &middot; -</div>
-          <div class="device-pill off" id="immersion-mini">Immersion &middot; -</div>
+          <a class="device-pill off" id="easee-mini" href="#easee-device">Easee One Charger &middot; -</a>
+          <a class="device-pill off" id="tuya-mini" href="#breaker-device">POWER16 Charger &middot; -</a>
+          <a class="device-pill off" id="immersion-mini" href="#immersion-device">Immersion &middot; -</a>
         </div>
         <div class="next-band" id="next-band">-</div>
       </div>
@@ -424,16 +467,26 @@
     <div id="rate-standing"></div>
   </div>
 
-  <section class="charge-panel" id="charge-panel">
+  <section class="charge-panel" id="charge-panel" aria-labelledby="devices-title">
     <div class="charge-head">
-      <div class="charge-title">Charging</div>
+      <h2 class="charge-title" id="devices-title">Chargers &amp; hot water</h2>
       <div class="charge-updated" id="charge-updated">—</div>
     </div>
 
+    <nav class="device-nav" aria-label="Jump to a device">
+      <a class="device-easee" href="#easee-device">Easee One</a>
+      <a class="device-breaker" href="#breaker-device">POWER16</a>
+      <a class="device-immersion" href="#immersion-device">Immersion</a>
+    </nav>
+    <div class="devices-grid">
     <!-- EASEE 7 kW -->
-    <div class="charge-section">
+    <article class="charge-section device-easee" id="easee-device" aria-labelledby="easee-title">
       <div class="charge-section-head">
-        <div class="charge-section-title">Easee One Charger <span class="charge-cap">7 kW · 32 A · BEV</span></div>
+        <div class="device-identity">
+          <span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-6 6v4m-3-4h6"/></svg></span>
+          <div><div class="device-kind">CUPRA · Battery electric</div><h3 class="charge-section-title" id="easee-title">Easee One Charger</h3></div>
+        </div>
+        <p class="charge-cap">7 kW · 32 A</p>
         <div class="section-controls">
           <div id="charge-mode" class="charge-mode-pill disconnected">Loading…</div>
           <div class="override-control" id="easee-override" role="group" aria-label="BEV charger manual control">
@@ -444,38 +497,6 @@
         </div>
       </div>
       <div id="easee-override-status" class="override-status"></div>
-
-      <div class="sched" id="easee-sched">
-        <div class="sched-head">
-          <div class="sched-title">Scheduled charge
-            <span class="sched-hint">One-shot · forces the BEV charger ON for the window, then hands back to Auto</span>
-          </div>
-          <div class="sched-state" id="easee-sched-state">Off</div>
-        </div>
-        <div class="sched-body">
-          <div class="wheel-block">
-            <div class="wheel-label">Start</div>
-            <div class="wheels">
-              <div class="wheel" id="easee-start-h"></div>
-              <div class="wheel-sep">:</div>
-              <div class="wheel" id="easee-start-m"></div>
-            </div>
-          </div>
-          <div class="wheel-block">
-            <div class="wheel-label">End</div>
-            <div class="wheels">
-              <div class="wheel" id="easee-end-h"></div>
-              <div class="wheel-sep">:</div>
-              <div class="wheel" id="easee-end-m"></div>
-            </div>
-          </div>
-          <div class="sched-actions">
-            <button type="button" class="sched-btn arm" onclick="armSchedule('easee')">Arm</button>
-            <button type="button" class="sched-btn cancel" onclick="cancelSchedule('easee')">Cancel</button>
-          </div>
-        </div>
-        <div class="sched-status" id="easee-sched-status"></div>
-      </div>
 
       <div class="charge-grid">
         <div class="charge-metric">
@@ -510,12 +531,48 @@
         </div>
         <div class="charge-cost-note" id="easee-cost-note"></div>
       </div>
-    </div>
+      <details class="sched" id="easee-sched">
+        <summary class="sched-head">
+          <span class="sched-title">Scheduled charge</span>
+          <span class="sched-state" id="easee-sched-state">Off</span>
+        </summary>
+        <div class="sched-content">
+          <p class="sched-hint">One-shot · forces the BEV charger ON for the window, then hands back to Auto</p>
+          <div class="sched-body">
+            <div class="wheel-block">
+              <div class="wheel-label">Start</div>
+              <div class="wheels">
+                <div class="wheel" id="easee-start-h"></div>
+                <div class="wheel-sep">:</div>
+                <div class="wheel" id="easee-start-m"></div>
+              </div>
+            </div>
+            <div class="wheel-block">
+              <div class="wheel-label">End</div>
+              <div class="wheels">
+                <div class="wheel" id="easee-end-h"></div>
+                <div class="wheel-sep">:</div>
+                <div class="wheel" id="easee-end-m"></div>
+              </div>
+            </div>
+            <div class="sched-actions">
+              <button type="button" class="sched-btn arm" onclick="armSchedule('easee')">Arm</button>
+              <button type="button" class="sched-btn cancel" onclick="cancelSchedule('easee')">Cancel</button>
+            </div>
+          </div>
+          <div class="sched-status" id="easee-sched-status"></div>
+        </div>
+      </details>
+    </article>
 
     <!-- TUYA 3.7 kW BREAKER -->
-    <div class="charge-section">
+    <article class="charge-section device-breaker" id="breaker-device" aria-labelledby="breaker-title">
       <div class="charge-section-head">
-        <div class="charge-section-title">POWER16 Charger <span class="charge-cap">3.7 kW · 16 A Type 2 · PHEV · via Tuya breaker</span></div>
+        <div class="device-identity">
+          <span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-6 6v4m-3-4h6"/></svg></span>
+          <div><div class="device-kind">Lexus · Plug-in hybrid</div><h3 class="charge-section-title" id="breaker-title">POWER16 Charger</h3></div>
+        </div>
+        <p class="charge-cap">3.7 kW · 16 A · Type 2</p>
         <div class="section-controls">
           <div id="breaker-mode" class="charge-mode-pill disconnected">—</div>
           <div class="override-control" id="breaker-override" role="group" aria-label="POWER16 charger manual control">
@@ -526,38 +583,6 @@
         </div>
       </div>
       <div id="breaker-override-status" class="override-status"></div>
-
-      <div class="sched" id="breaker-sched">
-        <div class="sched-head">
-          <div class="sched-title">Scheduled charge
-            <span class="sched-hint">One-shot · forces the POWER16 charger ON for the window, then hands back to Auto</span>
-          </div>
-          <div class="sched-state" id="breaker-sched-state">Off</div>
-        </div>
-        <div class="sched-body">
-          <div class="wheel-block">
-            <div class="wheel-label">Start</div>
-            <div class="wheels">
-              <div class="wheel" id="breaker-start-h"></div>
-              <div class="wheel-sep">:</div>
-              <div class="wheel" id="breaker-start-m"></div>
-            </div>
-          </div>
-          <div class="wheel-block">
-            <div class="wheel-label">End</div>
-            <div class="wheels">
-              <div class="wheel" id="breaker-end-h"></div>
-              <div class="wheel-sep">:</div>
-              <div class="wheel" id="breaker-end-m"></div>
-            </div>
-          </div>
-          <div class="sched-actions">
-            <button type="button" class="sched-btn arm" onclick="armSchedule('breaker')">Arm</button>
-            <button type="button" class="sched-btn cancel" onclick="cancelSchedule('breaker')">Cancel</button>
-          </div>
-        </div>
-        <div class="sched-status" id="breaker-sched-status"></div>
-      </div>
 
       <div id="tuya-faults" class="fault-banner unknown">Breaker health unknown</div>
       <div class="charge-grid">
@@ -593,16 +618,55 @@
         </div>
         <div class="charge-cost-note" id="breaker-cost-note"></div>
       </div>
-    </div>
+      <details class="sched" id="breaker-sched">
+        <summary class="sched-head">
+          <span class="sched-title">Scheduled charge</span>
+          <span class="sched-state" id="breaker-sched-state">Off</span>
+        </summary>
+        <div class="sched-content">
+          <p class="sched-hint">One-shot · forces the POWER16 charger ON for the window, then hands back to Auto</p>
+          <div class="sched-body">
+            <div class="wheel-block">
+              <div class="wheel-label">Start</div>
+              <div class="wheels">
+                <div class="wheel" id="breaker-start-h"></div>
+                <div class="wheel-sep">:</div>
+                <div class="wheel" id="breaker-start-m"></div>
+              </div>
+            </div>
+            <div class="wheel-block">
+              <div class="wheel-label">End</div>
+              <div class="wheels">
+                <div class="wheel" id="breaker-end-h"></div>
+                <div class="wheel-sep">:</div>
+                <div class="wheel" id="breaker-end-m"></div>
+              </div>
+            </div>
+            <div class="sched-actions">
+              <button type="button" class="sched-btn arm" onclick="armSchedule('breaker')">Arm</button>
+              <button type="button" class="sched-btn cancel" onclick="cancelSchedule('breaker')">Cancel</button>
+            </div>
+          </div>
+          <div class="sched-status" id="breaker-sched-status"></div>
+        </div>
+      </details>
+    </article>
 
     <!-- IMMERSION HEATER (Tuya smart plug on the hot-water cylinder). Heats overnight on the
          off-peak rate because 6.66p/kWh of electricity is cheaper than gas at ~9.23p/kWh of
          heat into the cylinder. The cylinder thermostat does the real controlling; the 6h
          auto-cutoff is only a backstop. -->
-    <div class="charge-section">
+    <article class="charge-section device-immersion" id="immersion-device" aria-labelledby="immersion-title">
       <div class="charge-section-head">
-        <div class="charge-section-title">Immersion Heater <span class="charge-cap" id="imm-cap">auto-on 03:00–06:00 &amp; free (0p) hours · 4h max runtime</span></div>
-        <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
+        <div class="device-identity">
+          <span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3s-7 8-7 12a7 7 0 0 0 14 0c0-4-7-12-7-12Z"/><path d="M8 15a4 4 0 0 0 4 4"/></svg></span>
+          <div><div class="device-kind">Hot water</div><h3 class="charge-section-title" id="immersion-title">Immersion Heater</h3></div>
+        </div>
+        <p class="charge-cap" id="imm-cap">auto-on 03:00–06:00 &amp; free (0p) hours · 4h max runtime</p>
+        <div class="section-controls">
+          <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
+          <span class="automation-label">Automatic heating</span>
+        </div>
       </div>
       <div class="charge-grid">
         <div class="charge-metric">
@@ -636,6 +700,7 @@
         </div>
         <div class="imm-usage-note" id="imm-usage-note"></div>
       </div>
+    </article>
     </div>
   </section>
 
@@ -693,7 +758,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-16 20:00";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-16 devices-v1";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1262,7 +1327,7 @@ async function loadLiveState(){
 
     // Easee metrics. When the charger isn't live these are last-known, not measurements,
     // so the instantaneous ones are blanked and the whole grid is dimmed.
-    const easeeGrid = document.querySelector("#charge-panel .charge-section .charge-grid");
+    const easeeGrid = document.querySelector("#easee-device .charge-grid");
     if (easeeGrid) easeeGrid.classList.toggle("stale", !easeeLive);
     document.getElementById("live-kw").textContent    = easeeLive ? fmtNum(easee.total_power_kw, 3) : "—";
     document.getElementById("live-volts").textContent = easeeLive ? (fmtNum(easee.voltage, 1) + " V") : "— V";
@@ -1347,7 +1412,7 @@ async function loadLiveState(){
     document.getElementById("imm-switch").textContent =
       (imm.switch_on === true ? "ON" : imm.switch_on === false ? "OFF" : "—");
     document.getElementById("imm-switch-sub").textContent =
-      (imm.online === false ? "device offline" : "Tuya metering plug (192.168.1.235)");
+      (imm.online === false ? "device offline" : "metered at the heater plug");
     document.getElementById("imm-remaining").textContent =
       (imm.switch_on === true && imm.remaining_s != null) ? fmtDuration(imm.remaining_s) : "—";
     document.getElementById("imm-remaining-sub").textContent =
@@ -1948,15 +2013,20 @@ const schedWheelsSynced = { easee:false, breaker:false };
 function wheelIndex(el){
   const n = (el._values || []).length;
   if (!n) return 0;
+  // Closed schedule details have no scroll layout. Keep their chosen value until opened.
+  if (!el.getClientRects().length) return el._selectedIndex || 0;
   return Math.max(0, Math.min(n-1, Math.round(el.scrollTop / WHEEL_ITEM_H)));
 }
 function markWheel(el){
   const i = wheelIndex(el);
+  el._selectedIndex = i;
   el.querySelectorAll(".wheel-item").forEach((it,j)=> it.classList.toggle("sel", j===i));
 }
 function setWheel(elId, idx, smooth){
   const el = document.getElementById(elId);
   if (!el) return;
+  el._selectedIndex = idx;
+  if (!el.getClientRects().length){ markWheel(el); return; }
   el.scrollTo({ top: idx*WHEEL_ITEM_H, behavior: smooth ? "smooth" : "auto" });
   setTimeout(()=>markWheel(el), smooth ? 260 : 0);
 }
@@ -2005,6 +2075,11 @@ function initWheels(){
     buildWheel(`${d}-start-m`, MINUTES, "00");
     buildWheel(`${d}-end-h`,   HOURS,   "05");
     buildWheel(`${d}-end-m`,   MINUTES, "00");
+    const details = document.getElementById(`${d}-sched`);
+    details.addEventListener("toggle", () => {
+      if (!details.open) return;
+      details.querySelectorAll(".wheel").forEach(el => setWheel(el.id, el._selectedIndex || 0, false));
+    });
   }
 }
 
