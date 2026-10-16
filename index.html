@@ -186,6 +186,53 @@
   .charge-cost-live{font-size:14px;color:var(--cyan);font-weight:600;margin-top:5px;
     font-variant-numeric:tabular-nums}
   .charge-cost-note{font-size:12px;color:var(--text-dim);margin-top:7px;line-height:1.45}
+/* Last-charge / last-night card: three big numbers - cost, energy, time - then one quiet line. */
+  .lc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .lc-title{font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-dim);font-weight:700}
+  .lc-when{font-size:13px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+  .lc-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px}
+  .lc-val{font-size:26px;font-weight:800;line-height:1.1;letter-spacing:-0.01em;color:var(--text);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .lc-lbl{font-size:12px;color:var(--text-very-dim);margin-top:3px}
+  .lc-live{font-size:14px;font-weight:600;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid var(--border);
+    font-variant-numeric:tabular-nums}
+  @media (max-width:560px){
+    .lc-stats{grid-template-columns:1fr 1fr;row-gap:14px}
+    .lc-stats > div:last-child{grid-column:1 / -1}
+    .lc-val{font-size:24px}
+  }
+/* ENERGY HISTORY */
+  .hist-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:28px 30px}
+  .hist-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .seg{display:inline-flex;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:4px}
+  .seg button{border:none;background:transparent;color:var(--text-dim);font:inherit;font-size:13px;font-weight:600;
+    padding:7px 14px;border-radius:999px;cursor:pointer}
+  .seg button.active{background:rgba(34,211,238,0.16);color:var(--cyan)}
+  .hist-legend{display:flex;flex-wrap:wrap;gap:14px;margin:18px 0 6px;font-size:13px;color:var(--text-dim)}
+  .hist-legend span{display:inline-flex;align-items:center;gap:6px}
+  .hist-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .hist-chart{position:relative;width:100%}
+  .hist-chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .hist-tip{position:absolute;pointer-events:none;background:#0b0f1a;border:1px solid var(--border);border-radius:10px;
+    padding:10px 12px;font-size:12px;color:var(--text);min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,0.5);
+    font-variant-numeric:tabular-nums;z-index:5}
+  .hist-tip .r{display:flex;justify-content:space-between;gap:14px;color:var(--text-dim)}
+  .hist-tip .r b{color:var(--text);font-weight:600}
+  .hist-tip i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:6px}
+  .hist-table-wrap{overflow-x:auto;margin-top:18px}
+  .hist-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  .hist-table th{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-very-dim);font-weight:700;
+    text-align:right;padding:8px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .hist-table th:first-child,.hist-table td:first-child{text-align:left}
+  .hist-table td{padding:8px 8px;border-bottom:1px solid rgba(31,41,64,0.6);text-align:right;color:var(--text);white-space:nowrap}
+  .hist-table td.dim{color:var(--text-very-dim)}
+  .hist-table tr.total td{font-weight:700;border-top:1px solid var(--border)}
+  .hist-note{font-size:12px;color:var(--text-dim);margin-top:12px;line-height:1.5}
+  .hist-edf{margin-top:18px;padding:14px 16px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);
+    font-size:13px;color:var(--text-dim);line-height:1.5}
+  .hist-edf button,.hist-edf label.btn{display:inline-block;margin-top:8px;margin-right:8px;border:1px solid var(--border);
+    background:transparent;color:var(--text);font:inherit;font-size:13px;font-weight:600;padding:7px 14px;border-radius:999px;cursor:pointer}
+  @media (max-width:720px){ .hist-panel{padding:22px 16px;border-radius:20px} }
 /* THRESHOLD PANEL */
   .threshold-panel{margin-top:48px;background:var(--surface);border:1px solid var(--border);
     border-radius:22px;padding:32px 36px}
@@ -453,8 +500,14 @@
         </div>
       </div>
       <div class="charge-cost">
-        <div class="charge-cost-main" id="easee-cost-main">No charge recorded yet</div>
-        <div class="charge-cost-live" id="easee-cost-live" hidden></div>
+        <div class="lc-live" id="easee-cost-live" hidden></div>
+        <div class="lc-head"><span class="lc-title">Last charge</span><span class="lc-when" id="easee-lc-when">—</span></div>
+        <div class="charge-cost-main" id="easee-cost-main" hidden></div>
+        <div class="lc-stats" id="easee-lc-stats">
+          <div><div class="lc-val" id="easee-lc-cost">—</div><div class="lc-lbl">cost</div></div>
+          <div><div class="lc-val" id="easee-lc-kwh">—</div><div class="lc-lbl">energy</div></div>
+          <div><div class="lc-val" id="easee-lc-time">—</div><div class="lc-lbl" id="easee-lc-dur">charging</div></div>
+        </div>
         <div class="charge-cost-note" id="easee-cost-note"></div>
       </div>
     </div>
@@ -530,8 +583,14 @@
         </div>
       </div>
       <div class="charge-cost">
-        <div class="charge-cost-main" id="breaker-cost-main">No charge recorded yet</div>
-        <div class="charge-cost-live" id="breaker-cost-live" hidden></div>
+        <div class="lc-live" id="breaker-cost-live" hidden></div>
+        <div class="lc-head"><span class="lc-title">Last charge</span><span class="lc-when" id="breaker-lc-when">—</span></div>
+        <div class="charge-cost-main" id="breaker-cost-main" hidden></div>
+        <div class="lc-stats" id="breaker-lc-stats">
+          <div><div class="lc-val" id="breaker-lc-cost">—</div><div class="lc-lbl">cost</div></div>
+          <div><div class="lc-val" id="breaker-lc-kwh">—</div><div class="lc-lbl">energy</div></div>
+          <div><div class="lc-val" id="breaker-lc-time">—</div><div class="lc-lbl" id="breaker-lc-dur">charging</div></div>
+        </div>
         <div class="charge-cost-note" id="breaker-cost-note"></div>
       </div>
     </div>
@@ -568,10 +627,41 @@
         </div>
       </div>
       <div class="imm-usage">
-        <div class="imm-usage-main" id="imm-usage-main">No completed run recorded yet</div>
-        <div class="imm-usage-live" id="imm-usage-live" hidden></div>
+        <div class="lc-live imm-usage-live" id="imm-usage-live" hidden></div>
+        <div class="lc-head"><span class="lc-title">Last night</span><span class="lc-when" id="imm-usage-main">—</span></div>
+        <div class="lc-stats" id="imm-lc-stats">
+          <div><div class="lc-val" id="imm-lc-cost">—</div><div class="lc-lbl">cost</div></div>
+          <div><div class="lc-val" id="imm-lc-kwh">—</div><div class="lc-lbl">energy</div></div>
+          <div><div class="lc-val" id="imm-lc-time">—</div><div class="lc-lbl" id="imm-lc-dur">heating</div></div>
+        </div>
         <div class="imm-usage-note" id="imm-usage-note"></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ENERGY HISTORY: what the car chargers and the immersion used and cost, by day / week / month.
+       Recorded by the Pi (settings key energy_history). "Rest of house" needs the EDF usage file:
+       total on the bill minus the devices, computed in this browser only. -->
+  <section class="hist-panel" id="hist-panel">
+    <div class="charge-head">
+      <div class="charge-title">Energy history</div>
+      <div class="hist-controls">
+        <div class="seg" id="hist-view" role="group" aria-label="Period">
+          <button data-v="day">Day</button><button data-v="week">Week</button><button data-v="month">Month</button>
+        </div>
+        <div class="seg" id="hist-unit" role="group" aria-label="Unit">
+          <button data-u="cost">£</button><button data-u="kwh">kWh</button>
+        </div>
+      </div>
+    </div>
+    <div class="hist-legend" id="hist-legend"></div>
+    <div class="hist-chart" id="hist-chart"><div class="hist-note">Loading history…</div></div>
+    <div class="hist-table-wrap"><table class="hist-table" id="hist-table"></table></div>
+    <div class="hist-note" id="hist-note"></div>
+    <div class="hist-edf" id="hist-edf">
+      <div id="hist-edf-status"></div>
+      <label class="btn">Add EDF usage file<input type="file" id="hist-edf-file" accept=".csv,text/csv" multiple hidden></label>
+      <button id="hist-edf-clear" hidden>Clear EDF data</button>
     </div>
   </section>
 
@@ -603,7 +693,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-15 12:00";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-16 20:00";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1342,50 +1432,340 @@ function chargeCostText(sess){
   return (sess.cost_complete === false ? "at least " : "") + fmtPence(sess.cost_p);
 }
 
+function rateName(p){
+  if (p <= 0) return "free";
+  return p <= 15 ? "off-peak" : "peak";
+}
+
+function fmtDur(ms){
+  const m = Math.max(0, Math.round(ms / 60000));
+  const h = Math.floor(m / 60);
+  return h ? `${h}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
+}
+
 function renderChargeCost(key, cs, reporting){
-  const mainEl = document.getElementById(`${key}-cost-main`);
-  const liveEl = document.getElementById(`${key}-cost-live`);
-  const noteEl = document.getElementById(`${key}-cost-note`);
-  if (!mainEl) return;
-  if (!reporting || !cs){
-    mainEl.textContent = "Charge costs not reporting";
-    liveEl.hidden = true;
-    noteEl.textContent = "";
-    return;
-  }
+  const $ = (id) => document.getElementById(`${key}-${id}`);
+  const liveEl = $("cost-live"), noteEl = $("cost-note"), msgEl = $("cost-main");
+  if (!liveEl) return;
   const tm = (iso) => new Date(iso).toLocaleTimeString("en-GB",
     {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
   const dy = (iso) => new Date(iso).toLocaleDateString("en-GB",
     {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
-
+  const setStats = (cost, kwh, time, dur) => {
+    $("lc-cost").textContent = cost; $("lc-kwh").textContent = kwh;
+    $("lc-time").textContent = time; $("lc-dur").textContent = dur;
+  };
+  if (!reporting || !cs){
+    $("lc-when").textContent = "not reporting";
+    setStats("—", "—", "—", "charging"); liveEl.hidden = true; noteEl.textContent = ""; return;
+  }
   const l = cs.last, a = cs.active;
-  mainEl.textContent = l
-    ? `Last charge ${dy(l.started)} · ${tm(l.started)}–${tm(l.ended)} · ${l.kwh.toFixed(2)} kWh · ${chargeCostText(l)}`
-    : "No completed charge recorded yet";
+
+  if (l){
+    const ms = new Date(l.ended) - new Date(l.started);
+    $("lc-when").textContent = dy(l.started);
+    setStats(chargeCostText(l), `${l.kwh.toFixed(l.kwh < 10 ? 2 : 1)} kWh`,
+             `${tm(l.started)}–${tm(l.ended)}`, `${fmtDur(ms)} charging`);
+  } else {
+    $("lc-when").textContent = "none recorded yet";
+    setStats("—", "—", "—", "charging");
+  }
 
   if (a){
     const lead = a.unplugged ? "Unplugged · finalising"
       : (a.charging === false)
         ? (key === "easee" ? "Plugged in · not charging" : "Paused")
         : "Charging now";
-    let live = `${lead} · since ${tm(a.started)} · ${a.kwh.toFixed(2)} kWh · ${chargeCostText(a)} so far`;
-    if ((a.rates || []).filter(r => r.kwh >= 0.005).length > 1) live += ` · ${chargeRatesText(a)}`;
-    liveEl.textContent = live;
+    liveEl.textContent = `${lead} · since ${tm(a.started)} · ${a.kwh.toFixed(2)} kWh · ${chargeCostText(a)} so far`;
+    liveEl.style.color = (a.charging && !a.unplugged) ? "var(--cyan)" : "var(--text-dim)";
     liveEl.hidden = false;
   } else {
     liveEl.hidden = true;
   }
 
+  // One quiet line: which rate(s) the last charge was billed at. Detail only when it matters.
   const bits = [];
-  const shown = l || a;
-  if (shown){
-    const rt = chargeRatesText(shown);
-    if (rt) bits.push(rt);
-    bits.push("priced at the rate in force when each kWh was drawn");
-    if (shown.gap_kwh >= 0.05) bits.push(`${shown.gap_kwh.toFixed(2)} kWh fell in a gap between readings and was priced pro rata`);
-    if (shown.unpriced_kwh >= 0.005) bits.push(`${shown.unpriced_kwh.toFixed(2)} kWh had no published rate and is not in the cost`);
+  if (l){
+    const rs = (l.rates || []).filter(r => r.kwh >= 0.005);
+    if (rs.length === 1){
+      bits.push(rs[0].price_p <= 0 ? "All free (0p)" : `All at the ${rateName(rs[0].price_p)} rate · ${Number(rs[0].price_p.toFixed(2))}p/kWh`);
+    } else if (rs.length > 1){
+      bits.push(rs.map(r => `${r.kwh.toFixed(2)} kWh ${rateName(r.price_p)}${r.price_p > 0 ? ` at ${Number(r.price_p.toFixed(2))}p` : ""} (${fmtPence(r.cost_p)})`).join(" + "));
+      if (l.gap_kwh >= 0.05) bits.push(`${l.gap_kwh.toFixed(2)} kWh was reported late by the charger and split between the rates by time`);
+    }
+    if (l.unpriced_kwh >= 0.005) bits.push(`${l.unpriced_kwh.toFixed(2)} kWh had no published rate yet, so the cost is a minimum`);
   }
   noteEl.textContent = bits.join(" · ");
+}
+
+// ------------------------------------------------------------------
+// ENERGY HISTORY. Day/week/month energy and cost per device from the Pi's day ledger
+// (settings.energy_history). "Rest of house" = the EDF bill total minus the devices, from an
+// EDF usage CSV the user adds; it is parsed and kept in this browser only.
+// Colours: validated categorical slots 1-4 for the dark surface (dataviz palette, CVD-checked).
+// ------------------------------------------------------------------
+const HIST_SERIES = [
+  {key: "easee",     name: "Easee · CUPRA",   short: "CUPRA",     color: "#3987e5"},
+  {key: "breaker",   name: "POWER16 · Lexus", short: "Lexus",     color: "#d95926"},
+  {key: "immersion", name: "Immersion",       short: "Hot water", color: "#199e70"},
+  {key: "rest",      name: "Rest of house",   short: "Rest",      color: "#c98500"},
+];
+const HIST_SPAN = {day: 14, week: 12, month: 12};
+let histData = null;
+let histView = "week", histUnit = "cost";
+try { histView = localStorage.getItem("fp_hist_view") || "week"; histUnit = localStorage.getItem("fp_hist_unit") || "cost"; } catch(e){}
+let edfDays = {}, edfMonths = {};
+try { edfDays = JSON.parse(localStorage.getItem("fp_edf_days") || "{}"); edfMonths = JSON.parse(localStorage.getItem("fp_edf_months") || "{}"); } catch(e){}
+
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseYmd = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const fmtKwhH = (v) => v == null ? "—" : `${v.toFixed(v < 10 ? 2 : 1)}`;
+const fmtGbpH = (p) => p == null ? "—" : (Math.abs(p) < 100 ? `${p.toFixed(0)}p` : `£${(p / 100).toFixed(2)}`);
+
+async function loadHistory(){
+  try {
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.energy_history&select=value`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" });
+    if (rows && rows.length) histData = JSON.parse(rows[0].value);
+  } catch(e){ /* keep the last good copy */ }
+  renderHistory();
+}
+
+function periodStart(d, view){
+  if (view === "day") return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (view === "week"){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function periodNext(d, view){
+  const x = new Date(d);
+  if (view === "day") x.setDate(x.getDate() + 1);
+  else if (view === "week") x.setDate(x.getDate() + 7);
+  else x.setMonth(x.getMonth() + 1);
+  return x;
+}
+function periodLabel(d, view, short){
+  if (view === "day") return d.toLocaleDateString("en-GB", short ? {day: "numeric"} : {weekday: "short", day: "numeric", month: "short"});
+  if (view === "week") return (short ? "" : "w/c ") + d.toLocaleDateString("en-GB", {day: "numeric", month: "short"});
+  return d.toLocaleDateString("en-GB", short ? {month: "short"} : {month: "long", year: "numeric"});
+}
+
+function buildPeriods(){
+  const days = (histData && histData.days) || {};
+  const dates = Object.keys(days).sort();
+  if (!dates.length) return [];
+  const first = parseYmd(dates[0]);
+  const today = new Date();
+  let start = periodStart(today, histView);
+  const out = [];
+  for (let i = 0; i < HIST_SPAN[histView]; i++){
+    const end = periodNext(start, histView);
+    if (end <= first) break;
+    const p = {start, end, label: periodLabel(start, histView, false), short: periodLabel(start, histView, true),
+               v: {}, est: false, nDays: 0, edfDays: 0};
+    HIST_SERIES.forEach(se => p.v[se.key] = {kwh: 0, p: 0});
+    let restK = 0, restP = 0;
+    for (let d = new Date(start); d < end && d <= today; d.setDate(d.getDate() + 1)){
+      if (d < first) continue;
+      const k = ymd(d), row = days[k] || {};
+      p.nDays++;
+      let devK = 0, devP = 0;
+      ["easee", "breaker", "immersion"].forEach(dev => {
+        const v = row[dev]; if (!v) return;
+        p.v[dev].kwh += v[0]; p.v[dev].p += v[1]; devK += v[0]; devP += v[1];
+      });
+      if (row.est && row.est.length) p.est = true;
+      const e = edfDays[k];
+      if (e){ p.edfDays++; restK += e[0] - devK; restP += e[1] * 100 - devP; }
+    }
+    if (p.edfDays){
+      p.v.rest = {kwh: Math.max(0, restK), p: Math.max(0, restP)};
+    } else if (histView === "month" && edfMonths[ymd(start).slice(0, 7)]){
+      const m = edfMonths[ymd(start).slice(0, 7)];
+      const devK = p.v.easee.kwh + p.v.breaker.kwh + p.v.immersion.kwh, devP = p.v.easee.p + p.v.breaker.p + p.v.immersion.p;
+      p.v.rest = {kwh: Math.max(0, m[0] - devK), p: Math.max(0, m[1] * 100 - devP)};
+      p.edfDays = p.nDays; p.edfMonthly = true;
+    } else {
+      p.v.rest = null;
+    }
+    out.push(p);
+    start = new Date(start); start = (histView === "day") ? new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1)
+          : (histView === "week") ? new Date(start.getFullYear(), start.getMonth(), start.getDate() - 7)
+          : new Date(start.getFullYear(), start.getMonth() - 1, 1);
+  }
+  return out.reverse();     // oldest -> newest for the chart
+}
+
+function valOf(p, key){
+  const v = p.v[key]; if (!v) return null;
+  return histUnit === "cost" ? v.p : v.kwh;
+}
+function fmtVal(v){ return histUnit === "cost" ? fmtGbpH(v) : (v == null ? "—" : `${fmtKwhH(v)} kWh`); }
+
+function niceMax(v){
+  if (v <= 0) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+}
+
+function renderHistory(){
+  const chart = document.getElementById("hist-chart");
+  if (!chart) return;
+  document.querySelectorAll("#hist-view button").forEach(b => b.classList.toggle("active", b.dataset.v === histView));
+  document.querySelectorAll("#hist-unit button").forEach(b => b.classList.toggle("active", b.dataset.u === histUnit));
+  const periods = buildPeriods();
+  const hasRest = periods.some(p => p.v.rest);
+  const series = HIST_SERIES.filter(se => se.key !== "rest" || hasRest);
+  document.getElementById("hist-legend").innerHTML = series.map(se =>
+    `<span><i style="background:${se.color}"></i>${se.name}</span>`).join("");
+  renderEdfStatus();
+  if (!periods.length){
+    chart.innerHTML = `<div class="hist-note">${histData ? "No history yet." : "History not available yet - the Pi publishes it every 10 minutes."}</div>`;
+    document.getElementById("hist-table").innerHTML = ""; document.getElementById("hist-note").textContent = "";
+    return;
+  }
+
+  // ---- chart: stacked bars, one per period --------------------------------------------------
+  const W = Math.max(300, chart.clientWidth || 600), H = 230, padL = 46, padR = 6, padT = 14, padB = 26;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const totals = periods.map(p => series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0));
+  const ymax = niceMax(Math.max(...totals, histUnit === "cost" ? 50 : 1));
+  const band = iw / periods.length, bw = Math.max(6, Math.min(34, band * 0.62));
+  const y = (v) => padT + ih - (v / ymax) * ih;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Energy history chart">`;
+  for (let i = 0; i <= 4; i++){
+    const v = ymax * i / 4, yy = y(v);
+    svg += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}" stroke="${i ? "#1f2940" : "#2a3654"}" stroke-width="1"/>`;
+    svg += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#64748b">${histUnit === "cost" ? fmtGbpH(v) : fmtKwhH(v)}</text>`;
+  }
+  const every = Math.ceil(periods.length / Math.max(1, Math.floor(iw / 44)));
+  periods.forEach((p, i) => {
+    const cx = padL + band * i + band / 2, x0 = cx - bw / 2;
+    let acc = 0;
+    const segs = series.map(se => ({se, v: valOf(p, se.key) || 0})).filter(s => s.v > 0);
+    segs.forEach((sg, j) => {
+      const top = y(acc + sg.v), bot = y(acc);
+      const h = Math.max(0, bot - top - (j > 0 ? 2 : 0));        // 2px surface gap between segments
+      const yTop = top, last = j === segs.length - 1, r = last ? Math.min(4, h / 2, bw / 2) : 0;
+      svg += last
+        ? `<path d="M${x0},${yTop + h} V${yTop + r} Q${x0},${yTop} ${x0 + r},${yTop} H${x0 + bw - r} Q${x0 + bw},${yTop} ${x0 + bw},${yTop + r} V${yTop + h} Z" fill="${sg.se.color}"/>`
+        : `<rect x="${x0}" y="${yTop}" width="${bw}" height="${h}" fill="${sg.se.color}"/>`;
+      acc += sg.v;
+    });
+    if (i % every === 0 || i === periods.length - 1)
+      svg += `<text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#64748b">${p.short}${p.est ? "≈" : ""}</text>`;
+    svg += `<rect class="hist-hit" data-i="${i}" x="${padL + band * i}" y="${padT}" width="${band}" height="${ih}" fill="transparent"/>`;
+  });
+  svg += `</svg><div class="hist-tip" id="hist-tip" hidden></div>`;
+  chart.innerHTML = svg;
+
+  const tip = document.getElementById("hist-tip");
+  const showTip = (i, evt) => {
+    const p = periods[i];
+    const rows = series.map(se => {
+      const v = valOf(p, se.key);
+      return `<div class="r"><span><i style="background:${se.color}"></i>${se.name}</span><b>${v == null ? "—" : fmtVal(v)}</b></div>`;
+    }).join("");
+    const tot = series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0);
+    tip.innerHTML = `<div style="font-weight:700;margin-bottom:6px">${p.label}${p.est ? " · estimated" : ""}</div>${rows}` +
+      `<div class="r" style="margin-top:6px;border-top:1px solid #1f2940;padding-top:6px"><span>${p.v.rest ? "Whole house" : "Tracked devices"}</span><b>${fmtVal(tot)}</b></div>`;
+    tip.hidden = false;
+    const box = chart.getBoundingClientRect();
+    const px = (evt.clientX || box.left) - box.left;
+    tip.style.left = `${Math.min(Math.max(0, px - 90), box.width - 190)}px`;
+    tip.style.top = `0px`;
+  };
+  chart.querySelectorAll(".hist-hit").forEach(el => {
+    el.addEventListener("mousemove", (e) => showTip(+el.dataset.i, e));
+    el.addEventListener("click", (e) => showTip(+el.dataset.i, e));
+    el.addEventListener("mouseleave", () => { tip.hidden = true; });
+  });
+
+  // ---- table: newest first, plus a total row --------------------------------------------------
+  const cols = series;
+  let html = `<thead><tr><th>${histView === "day" ? "Day" : histView === "week" ? "Week" : "Month"}</th>` +
+    cols.map(se => `<th title="${se.name}">${se.short}</th>`).join("") + `<th>Total</th></tr></thead><tbody>`;
+  const sum = {}; cols.forEach(se => sum[se.key] = 0); let sumAll = 0, restComplete = true;
+  [...periods].reverse().forEach(p => {
+    let tot = 0;
+    const cells = cols.map(se => {
+      const v = valOf(p, se.key);
+      if (v == null){ if (se.key === "rest") restComplete = false; return `<td class="dim">—</td>`; }
+      tot += v; sum[se.key] += v;
+      const partial = (se.key === "rest" && !p.edfMonthly && p.edfDays < p.nDays) ? ` <span class="dim">(${p.edfDays}/${p.nDays}d)</span>` : "";
+      if (partial) restComplete = false;
+      return `<td>${fmtVal(v)}${partial}</td>`;
+    }).join("");
+    sumAll += tot;
+    // Total = the whole bill only when EDF covers every day of the period; otherwise just the devices.
+    const whole = p.v.rest && (p.edfMonthly || p.edfDays >= p.nDays);
+    html += `<tr><td>${p.label}${p.est ? " ≈" : ""}</td>${cells}<td${whole ? "" : ' class="dim" title="tracked devices only"'}>${fmtVal(tot)}</td></tr>`;
+  });
+  html += `<tr class="total"><td>All shown</td>` + cols.map(se => `<td>${fmtVal(sum[se.key])}</td>`).join("") + `<td>${fmtVal(sumAll)}</td></tr></tbody>`;
+  document.getElementById("hist-table").innerHTML = html;
+
+  const exact = histData && histData.exact_from ? new Date(histData.exact_from) : null;
+  const notes = [];
+  if (periods.some(p => p.est) && exact)
+    notes.push(`≈ estimated from the Pi's logs before ${exact.toLocaleDateString("en-GB", {day: "numeric", month: "short"})}; exact (metered, priced at the rate in force) from then on.`);
+  notes.push("Costs are unit rates only; the standing charge is not included.");
+  if (hasRest && !restComplete) notes.push("Rest of house is shown only for days covered by your EDF file.");
+  document.getElementById("hist-note").textContent = notes.join(" ");
+}
+
+// ---- EDF usage file ---------------------------------------------------------------------------
+function parseEdfCsv(text){
+  const days = {}, months = {};
+  text.split(/\r?\n/).forEach(line => {
+    const f = line.split(",");
+    if (f.length < 3) return;
+    const kwh = parseFloat(f[1]), gbp = parseFloat(f[2]);
+    if (!isFinite(kwh)) return;
+    const ts = f[0].trim();
+    let m = ts.match(/(\d{2})\/(\d{2})\/(\d{4})$/);            // "HH:MM:SS DD/MM/YYYY" or "DD/MM/YYYY"
+    if (m){ const k = `${m[3]}-${m[2]}-${m[1]}`; const v = days[k] || (days[k] = [0, 0]); v[0] += kwh; v[1] += isFinite(gbp) ? gbp : 0; return; }
+    m = ts.match(/^(\d{2})\/(\d{4})$/);                          // "MM/YYYY"
+    if (m){ months[`${m[2]}-${m[1]}`] = [kwh, isFinite(gbp) ? gbp : 0]; }
+  });
+  return {days, months};
+}
+function renderEdfStatus(){
+  const st = document.getElementById("hist-edf-status");
+  if (!st) return;
+  const ds = Object.keys(edfDays).sort(), ms = Object.keys(edfMonths).sort();
+  const clear = document.getElementById("hist-edf-clear");
+  if (!ds.length && !ms.length){
+    st.innerHTML = "<b>Rest of house:</b> add your EDF usage file to split your bill into car charging, hot water and everything else. " +
+      "In your EDF account, open your electricity usage, choose half-hourly or daily, download the CSV, then add it here. It stays on this device.";
+    clear.hidden = true;
+  } else {
+    const fmt = (k) => parseYmd(k).toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric"});
+    st.innerHTML = `<b>EDF usage loaded:</b> ` + (ds.length ? `${ds.length} days (${fmt(ds[0])} – ${fmt(ds[ds.length - 1])})` : "") +
+      (ms.length ? `${ds.length ? "; " : ""}${ms.length} monthly totals` : "") + ". Add a newer file any time to extend it.";
+    clear.hidden = false;
+  }
+}
+function setupHistoryControls(){
+  document.querySelectorAll("#hist-view button").forEach(b => b.addEventListener("click", () => {
+    histView = b.dataset.v; try { localStorage.setItem("fp_hist_view", histView); } catch(e){} renderHistory(); }));
+  document.querySelectorAll("#hist-unit button").forEach(b => b.addEventListener("click", () => {
+    histUnit = b.dataset.u; try { localStorage.setItem("fp_hist_unit", histUnit); } catch(e){} renderHistory(); }));
+  const file = document.getElementById("hist-edf-file");
+  if (file) file.addEventListener("change", async () => {
+    for (const f of file.files){
+      const r = parseEdfCsv(await f.text());
+      Object.assign(edfDays, r.days); Object.assign(edfMonths, r.months);     // a newer file replaces those days
+    }
+    try { localStorage.setItem("fp_edf_days", JSON.stringify(edfDays)); localStorage.setItem("fp_edf_months", JSON.stringify(edfMonths)); } catch(e){}
+    file.value = "";
+    renderHistory();
+  });
+  const clr = document.getElementById("hist-edf-clear");
+  if (clr) clr.addEventListener("click", () => {
+    edfDays = {}; edfMonths = {};
+    try { localStorage.removeItem("fp_edf_days"); localStorage.removeItem("fp_edf_months"); } catch(e){}
+    renderHistory();
+  });
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderHistory, 150); });
 }
 
 function renderImmersionUsage(usage, offpeakPence){
@@ -1412,11 +1792,23 @@ function renderImmersionUsage(usage, offpeakPence){
   // fall back to the calibrated estimate, and say so.
   const ln = usage.last_window || usage.last_night;
   let measuredNight = false;
+  const immStats = (cost, kwh, time, lbl) => {
+    document.getElementById("imm-lc-cost").textContent = cost || "—";
+    document.getElementById("imm-lc-kwh").textContent = kwh || "—";
+    document.getElementById("imm-lc-time").textContent = time || "—";
+    document.getElementById("imm-lc-dur").textContent = lbl || "heating";
+  };
+  immStats();
   if (ln && ln.on_minutes != null){
     const label = usage.last_window ? "Last night" : "Last run";
     let txt = `${label} ${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
+    const immTitle = document.querySelector(".imm-usage .lc-title");
+    if (immTitle) immTitle.textContent = label;
     if (ln.measured && ln.measured_kwh != null){
       measuredNight = true;
+      immStats(fmtCost(ln.measured_kwh, offpeakPence), `${Number(ln.measured_kwh).toFixed(2)} kWh`,
+               fmtMins(ln.element_minutes),
+               ln.element_last_at ? `heating · off by ${tm(ln.element_last_at)}` : "heating");
       txt += ` · heated ${fmtMins(ln.element_minutes)}`;
       if (ln.element_last_at) txt += `, thermostat off at ${tm(ln.element_last_at)}`;
       txt += ` · ${Number(ln.measured_kwh).toFixed(2)} kWh`;
@@ -1433,8 +1825,9 @@ function renderImmersionUsage(usage, offpeakPence){
       }
       const cost = fmtCost(kwh, offpeakPence);
       if (cost) txt += ` · ≈${cost}`;
+      immStats(cost ? `≈${cost}` : "—", `≈${kwh} kWh`, fmtMins(ln.on_minutes), "plug on (estimate)");
     }
-    mainEl.textContent = txt;
+    mainEl.textContent = `${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
   } else {
     mainEl.textContent = "No completed run recorded yet";
   }
@@ -1699,6 +2092,9 @@ async function init(){
   initWheels();
   await loadSchedules();
   loadLiveState();                             // tariff AND device state both come from live_state
+  setupHistoryControls();
+  loadHistory();
+  setInterval(loadHistory, 10 * 60_000);       // the Pi republishes the day ledger every 10 min
   setInterval(loadOverrides, 30_000);          // refresh per-device overrides every 30s
   setInterval(loadSchedules, 30_000);          // refresh one-shot charge schedules every 30s
   setInterval(loadLiveState, 15_000);          // refresh tariff + live charging state every 15s
