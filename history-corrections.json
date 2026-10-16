@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "corrections": [
+    {
+      "day": "2026-10-01",
+      "device": "easee",
+      "kwh": 49.4,
+      "cost_p": 1543,
+      "cost_basis": "Easee app reported cost",
+      "source": "Owner-supplied Easee session screenshot, Thu 1 Oct 2026: 49.4 kWh, 07:58–14:37, £15.43 at £0.3125/kWh.",
+      "started": "2026-10-01T07:58:00+01:00",
+      "ended": "2026-10-01T14:37:00+01:00",
+      "rates": [
+        { "band": "peak", "kwh": 49.4, "cost_p": 1543, "price_p": 31.25 },
+        { "band": "offpeak", "kwh": 0, "cost_p": 0 }
+      ]
+    }
+  ]
+}

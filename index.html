@@ -268,6 +268,9 @@
   .hist-date-label input{min-width:0;max-width:100%;min-height:44px;border:1px solid var(--border);border-radius:10px;
     background:var(--surface-2);color:var(--text);font:inherit;padding:8px 10px}
   .hist-availability{font-size:12px;color:var(--text-dim);margin:12px 0 0;line-height:1.5}
+  .hist-pricing-note{margin-top:16px;padding:12px 14px;border:1px solid rgba(255,176,32,0.35);
+    border-radius:12px;background:rgba(255,176,32,0.06);color:var(--text-dim);font-size:13px;line-height:1.6}
+  .hist-pricing-note b{color:var(--amber)}
   .hist-period-btn{border:none;background:none;color:var(--text);font:inherit;font-weight:600;
     text-align:left;text-decoration:underline;text-underline-offset:4px;cursor:pointer;min-height:40px;padding:0}
   .hist-table tr.selected{background:rgba(34,211,238,0.08)}
@@ -777,6 +780,7 @@
       <button type="button" id="hist-latest">Latest</button>
     </div>
     <p class="hist-availability" id="hist-availability"></p>
+    <div class="hist-pricing-note" id="hist-pricing-note" hidden></div>
     <div class="hist-legend" id="hist-legend"></div>
     <div class="hist-chart" id="hist-chart"><div class="hist-note">Loading history…</div></div>
     <div class="hist-table-wrap"><table class="hist-table" id="hist-table"></table></div>
@@ -817,7 +821,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-16 history-v2";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-16 pricing-v3";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1668,6 +1672,7 @@ const HIST_SERIES = [
 ];
 const HIST_SPAN = {day: 7, week: 12, month: 12};
 let histData = null;
+let histCorrections = null;
 let histView = "day", histUnit = "cost", histAnchor = null, histSelectedDay = null, histFollowLatest = true;
 try {
   const v = localStorage.getItem("fp_hist_view"), u = localStorage.getItem("fp_hist_unit");
@@ -1706,13 +1711,34 @@ function renderHistoryBoundary(){
 }
 async function loadHistory(){
   try {
-    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.energy_history&select=value`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" });
-    if (rows && rows.length) histData = JSON.parse(rows[0].value);
+    const [rows, corrections] = await Promise.all([
+      fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.energy_history&select=value`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, cache: "no-store" }),
+      fetchJSON("history-corrections.json", {cache:"no-store"})
+    ]);
+    if (corrections && corrections.version === 1 && Array.isArray(corrections.corrections)) histCorrections = corrections;
+    if (rows && rows.length) histData = applyHistoryCorrections(JSON.parse(rows[0].value));
   } catch(e){ /* keep the last good copy */ }
   const dates = historyDates();
   if (histFollowLatest && dates.length) histAnchor = histSelectedDay = dates[dates.length - 1];
   renderHistory();
+}
+// Keep source-backed corrections outside the Pi's rolling ledger, which republishes
+// reconstructed history. Never reprice an old charge using the current tariff.
+function applyHistoryCorrections(data){
+  const result = JSON.parse(JSON.stringify(data));
+  for (const c of (histCorrections || {}).corrections || []){
+    if (!validDay(c.day) || !["easee", "breaker", "immersion"].includes(c.device) ||
+        !Number.isFinite(c.kwh) || c.kwh < 0 || !Number.isFinite(c.cost_p) || c.cost_p < 0 || !c.source) continue;
+    // An override replaces an existing device/day. It cannot silently create a new day
+    // or erase other sessions that a future, measured ledger records on the same date.
+    const row = (result.days || {})[c.day];
+    if (!row || !row[c.device] || !(row.est || []).includes(c.device) || Math.abs(row[c.device][0] - c.kwh) > 0.05) continue;
+    row[c.device] = [c.kwh, c.cost_p];
+    row.est = row.est.filter(d => d !== c.device);
+    row.corrections = Object.assign({}, row.corrections, {[c.device]:c});
+  }
+  return result;
 }
 function periodStart(d, view){
   if (view === "day") return parseYmd(ymd(d));
@@ -1734,7 +1760,7 @@ function buildHistoryPeriod(start, view){
   const days = (histData || {}).days || {}, dates = historyDates();
   const first = dates[0], today = ukToday(), end = periodNext(start, view);
   const p = {start, end, label:periodLabel(start, view, false), short:periodLabel(start, view, true),
-    v:{}, est:false, estimated:[], nDays:0, recordedDays:0, edfDays:0, missingDays:0};
+    v:{}, est:false, estimated:[], costUnverified:{}, nDays:0, recordedDays:0, edfDays:0, missingDays:0};
   HIST_SERIES.forEach(se => p.v[se.key] = {kwh:0, p:0});
   let restK = 0, restP = 0;
   for (let d = new Date(start); d < end && ymd(d) <= today; d = shiftDays(d, 1)){
@@ -1749,7 +1775,10 @@ function buildHistoryPeriod(start, view){
       const v = row[dev];
       if (!Array.isArray(v) || !v.slice(0, 2).every(Number.isFinite)) continue;
       p.v[dev].kwh += v[0]; p.v[dev].p += v[1]; devK += v[0]; devP += v[1];
-      if ((row.est || []).includes(dev) && !p.estimated.includes(dev)) p.estimated.push(dev);
+      if ((row.est || []).includes(dev)){
+        p.costUnverified[dev] = true;
+        if (!p.estimated.includes(dev)) p.estimated.push(dev);
+      }
     }
     if (row.est && row.est.length) p.est = true;
     const e = edfDays[k];
@@ -1765,6 +1794,8 @@ function buildHistoryPeriod(start, view){
     p.v.rest = {kwh:Math.max(0, m[0] - devK), p:Math.max(0, m[1] * 100 - devP)};
     p.edfDays = p.nDays; p.edfMonthly = true;
   } else p.v.rest = null;
+  p.costPartial = ["easee", "breaker", "immersion"].some(d => p.costUnverified[d]);
+  if (p.costPartial) p.costUnverified.rest = true;
   return p;
 }
 function buildPeriods(){
@@ -1855,19 +1886,37 @@ function renderHistoryDay(){
   };
   if (!row){ el.innerHTML += '<p class="hist-day-caption">No daily record is available for this date. Missing records are not treated as zero usage.</p>'; return; }
   const estimates = row.est || [];
-  el.innerHTML += '<p class="hist-day-caption">Peak/off-peak splits were not saved in these daily records. The charger cards show the rate breakdown for each last charge.</p>';
+  el.innerHTML += '<p class="hist-day-caption">Reconstructed costs marked Unverified are excluded from totals until their original charge records can be checked. Source-backed corrections are identified below.</p>';
   let totalK = 0, totalP = 0;
   const body = HIST_SERIES.filter(se => se.key !== "rest").map(se => {
     const v = row[se.key] || [0, 0], est = estimates.includes(se.key);
     totalK += v[0]; totalP += v[1];
-    return `<tr><td>${se.name}</td><td>${est ? "≈" : ""}${fmtKwhH(v[0])} kWh</td><td>${est ? "≈" : ""}${fmtGbpH(v[1])}</td><td class="dim">${est ? "Estimated" : v[0] === 0 ? "No usage recorded" : "Recorded"}</td></tr>`;
+    return `<tr><td>${se.name}</td><td>${est ? "≈" : ""}${fmtKwhH(v[0])} kWh</td><td>${est ? "Unverified" : fmtGbpH(v[1])}</td><td class="dim">${(row.corrections || {})[se.key] ? "Easee app" : est ? "Estimated energy" : v[0] === 0 ? "No usage recorded" : "Recorded"}</td></tr>`;
   }).join("");
   el.innerHTML += `<div class="hist-table-wrap"><table class="hist-table"><thead><tr><th>Device</th><th>Energy</th><th>Cost</th><th>Source</th></tr></thead><tbody>${body}` +
-    `<tr class="total"><td>Tracked devices</td><td>${estimates.length ? "≈" : ""}${fmtKwhH(totalK)} kWh</td><td>${estimates.length ? "≈" : ""}${fmtGbpH(totalP)}</td><td></td></tr></tbody></table></div>`;
+    `<tr class="total"><td>Tracked devices</td><td>${estimates.length ? "≈" : ""}${fmtKwhH(totalK)} kWh</td><td>${estimates.length ? "Unverified" : fmtGbpH(totalP)}</td><td></td></tr></tbody></table></div>`;
+  for (const [dev, correction] of Object.entries(row.corrections || {})){
+    const name = HIST_SERIES.find(se => se.key === dev);
+    if (!name) continue;
+    const section = document.createElement("div");
+    const caption = document.createElement("p"); caption.className = "hist-day-caption";
+    caption.textContent = `${name.name}: ${correction.source}`;
+    section.appendChild(caption);
+    const rates = document.createElement("div"); rates.className = "charge-rates";
+    for (const r of correction.rates || []){
+      if (!["peak", "offpeak", "free"].includes(r.band)) continue;
+      const cell = document.createElement("div");
+      cell.innerHTML = `<div class="rate-label">${r.band === "offpeak" ? "Off-peak" : r.band === "peak" ? "Peak" : "Free"}</div>` +
+        `<div class="rate-cost">${fmtGbpH(r.cost_p)}</div><div class="rate-energy">${fmtKwhH(r.kwh)} kWh</div>`;
+      rates.appendChild(cell);
+    }
+    section.appendChild(rates); el.appendChild(section);
+  }
 }
 
 function valOf(p, key){
   const v = p.v[key]; if (!p.hasData || !v) return null;
+  if (histUnit === "cost" && p.costUnverified[key]) return null;
   return histUnit === "cost" ? v.p : v.kwh;
 }
 function fmtVal(v){ return histUnit === "cost" ? fmtGbpH(v) : (v == null ? "—" : `${fmtKwhH(v)} kWh`); }
@@ -1891,6 +1940,9 @@ function renderHistory(){
   document.querySelectorAll("#hist-unit button").forEach(b => b.setAttribute("aria-pressed", b.dataset.u === histUnit));
   const hasRest = periods.some(p => p.v.rest);
   const series = HIST_SERIES.filter(se => se.key !== "rest" || hasRest);
+  const pricingNote = document.getElementById("hist-pricing-note");
+  pricingNote.hidden = !periods.some(p => p.costPartial);
+  pricingNote.innerHTML = '<b>Historical pricing needs verification.</b> Reconstructed records can use the wrong tariff. Unverified costs are excluded from cost charts and totals; energy estimates remain available. Source-backed corrections are shown in the individual-day details.';
   document.getElementById("hist-legend").innerHTML = series.map(se =>
     `<span><i style="background:${se.color}"></i>${se.name}</span>`).join("");
   renderEdfStatus();
@@ -1903,7 +1955,7 @@ function renderHistory(){
   // ---- chart: stacked bars, one per period --------------------------------------------------
   const W = Math.max(300, chart.clientWidth || 600), H = 230, padL = 46, padR = 6, padT = 14, padB = 26;
   const iw = W - padL - padR, ih = H - padT - padB;
-  const totals = periods.map(p => series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0));
+  const totals = periods.map(p => histUnit === "cost" && p.costPartial ? 0 : series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0));
   const ymax = niceMax(Math.max(...totals, histUnit === "cost" ? 50 : 1));
   const band = iw / periods.length, bw = Math.max(6, Math.min(34, band * 0.62));
   const y = (v) => padT + ih - (v / ymax) * ih;
@@ -1917,7 +1969,8 @@ function renderHistory(){
   periods.forEach((p, i) => {
     const cx = padL + band * i + band / 2, x0 = cx - bw / 2;
     let acc = 0;
-    const segs = series.map(se => ({se, v: valOf(p, se.key) || 0})).filter(s => s.v > 0);
+    const costUnknown = histUnit === "cost" && p.costPartial;
+    const segs = costUnknown ? [] : series.map(se => ({se, v: valOf(p, se.key) || 0})).filter(s => s.v > 0);
     segs.forEach((sg, j) => {
       const top = y(acc + sg.v), bot = y(acc);
       const h = Math.max(0, bot - top - (j > 0 ? 2 : 0));        // 2px surface gap between segments
@@ -1929,22 +1982,24 @@ function renderHistory(){
     });
     if (i % every === 0 || i === periods.length - 1)
       svg += `<text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#64748b">${p.short}${p.est ? "≈" : ""}</text>`;
-    if (!p.hasData) svg += `<line x1="${cx - 4}" x2="${cx + 4}" y1="${y(0) - 2}" y2="${y(0) - 2}" stroke="#64748b" stroke-width="2"/>`;
+    if (!p.hasData || costUnknown) svg += `<line x1="${cx - 4}" x2="${cx + 4}" y1="${y(0) - 2}" y2="${y(0) - 2}" stroke="#64748b" stroke-width="2"/>`;
     svg += `<rect class="hist-hit" role="button" tabindex="0" aria-label="View ${p.label}${p.hasData ? "" : ", no record"}" data-i="${i}" x="${padL + band * i}" y="${padT}" width="${band}" height="${ih}" fill="transparent" style="cursor:pointer"/>`;
   });
   svg += `</svg><div class="hist-tip" id="hist-tip" hidden></div>`;
   chart.innerHTML = svg;
+  if (histUnit === "cost" && !periods.some(p => p.hasData && !p.costPartial))
+    chart.innerHTML = '<p class="hist-note">Cost chart unavailable for these unverified periods. Choose kWh to explore the recorded energy, or select a day below to inspect its costs and sources.</p>';
 
   const tip = document.getElementById("hist-tip");
   const showTip = (i, evt) => {
     const p = periods[i];
     const rows = series.map(se => {
       const v = valOf(p, se.key);
-      return `<div class="r"><span><i style="background:${se.color}"></i>${se.name}</span><b>${v == null ? "—" : fmtVal(v)}</b></div>`;
+      return `<div class="r"><span><i style="background:${se.color}"></i>${se.name}</span><b>${v == null ? histUnit === "cost" && p.costUnverified[se.key] ? "Unverified" : "—" : fmtVal(v)}</b></div>`;
     }).join("");
     const tot = series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0);
     tip.innerHTML = `<div style="font-weight:700;margin-bottom:6px">${p.label}${p.est ? " · estimated" : ""}</div>${rows}` +
-      `<div class="r" style="margin-top:6px;border-top:1px solid #1f2940;padding-top:6px"><span>${p.v.rest ? "Including rest of house" : "Tracked devices"}</span><b>${p.hasData ? fmtVal(tot) : "—"}</b></div>`;
+      `<div class="r" style="margin-top:6px;border-top:1px solid #1f2940;padding-top:6px"><span>${p.v.rest ? "Including rest of house" : "Tracked devices"}</span><b>${histUnit === "cost" && p.costPartial ? "Unverified" : p.hasData ? fmtVal(tot) : "—"}</b></div>`;
     tip.hidden = false;
     const box = chart.getBoundingClientRect();
     const px = (evt.clientX || box.left) - box.left;
@@ -1971,7 +2026,7 @@ function renderHistory(){
     let tot = 0;
     const cells = cols.map(se => {
       const v = valOf(p, se.key);
-      if (v == null){ if (se.key === "rest") restComplete = false; return `<td class="dim">—</td>`; }
+      if (v == null){ if (se.key === "rest") restComplete = false; return `<td class="dim">${histUnit === "cost" && p.costUnverified[se.key] ? "Unverified" : "—"}</td>`; }
       tot += v; sum[se.key] += v; seen[se.key] = true;
       const partial = (se.key === "rest" && !p.edfMonthly && p.edfDays < p.nDays) ? ` <span class="dim">(${p.edfDays}/${p.nDays}d)</span>` : "";
       if (partial) restComplete = false;
@@ -1985,9 +2040,9 @@ function renderHistory(){
     const selected = histView === "day" && day === histSelectedDay;
     html += `<tr${selected ? ' class="selected"' : ""}><td><button type="button" class="hist-period-btn" data-start="${day}"` +
       `${selectable ? "" : " disabled"}${histView === "day" ? ` aria-pressed="${selected}"` : ""}>${p.label}${p.est ? " ≈" : ""}</button></td>` +
-      `${cells}<td${whole ? "" : ' class="dim" title="Sum of the values shown; standing charge excluded"'}>${p.hasData ? fmtVal(tot) : "—"}</td></tr>`;
+      `${cells}<td${whole ? "" : ' class="dim" title="Standing charge excluded; totals unavailable if a cost is unverified"'}>${histUnit === "cost" && p.costPartial ? "Unverified" : p.hasData ? fmtVal(tot) : "—"}</td></tr>`;
   });
-  html += `<tr class="total"><td>All shown</td>` + cols.map(se => `<td>${seen[se.key] ? fmtVal(sum[se.key]) : "—"}</td>`).join("") + `<td>${periods.some(p => p.hasData) ? fmtVal(sumAll) : "—"}</td></tr></tbody>`;
+  html += `<tr class="total"><td>All shown</td>` + cols.map(se => `<td>${histUnit === "cost" && tablePeriods.some(p => p.costUnverified[se.key]) ? "Unverified" : seen[se.key] ? fmtVal(sum[se.key]) : "—"}</td>`).join("") + `<td>${histUnit === "cost" && tablePeriods.some(p => p.costPartial) ? "Unverified" : periods.some(p => p.hasData) ? fmtVal(sumAll) : "—"}</td></tr></tbody>`;
   document.getElementById("hist-table").innerHTML = html;
   document.querySelectorAll("#hist-table .hist-period-btn").forEach(b => b.addEventListener("click", () => chooseHistoryPeriod(b.dataset.start)));
 
