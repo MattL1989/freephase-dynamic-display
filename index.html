@@ -821,7 +821,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-16 pricing-v3";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-16 measured-v4";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1488,7 +1488,7 @@ async function loadLiveState(){
     } else {
       document.getElementById("imm-since").textContent = "—";
     }
-    renderImmersionUsage(imm.usage, (state.tariff || {}).offpeak_price_p);
+    renderImmersionUsage(imm.usage);
     renderChargeCost("easee",   (state.charge_sessions || {}).easee,   !!state.charge_sessions);
     renderChargeCost("breaker", (state.charge_sessions || {}).breaker, !!state.charge_sessions);
     // Window text comes from the controller, not hardcoded here - these two captions have
@@ -1558,6 +1558,7 @@ function chargeRatesText(sess){
 
 // A session with energy drawn while no rate was known has a lower-bound cost until repriced.
 function chargeCostText(sess){
+  if (sess.cost_complete === false && !(sess.rates || []).some(r => r.kwh > 0)) return "Pending";
   return (sess.cost_complete === false ? "at least " : "") + fmtPence(sess.cost_p);
 }
 
@@ -1583,7 +1584,7 @@ function renderChargeRates(id, session){
   for (const rate of rates){
     if (![rate.price_p, rate.kwh, rate.cost_p].every(v => typeof v === "number" && Number.isFinite(v))) continue;
     const matches = v => v != null && Math.abs(rate.price_p - v) < 0.001;
-    const name = rate.price_p === 0 ? "free"
+    const name = ["offpeak", "peak", "free"].includes(rate.band) ? rate.band : rate.price_p === 0 ? "free"
       : matches((currentTariff || {}).offpeak_price_p) ? "offpeak"
       : matches((currentTariff || {}).peak_price_p) ? "peak" : "other";
     buckets[name].kwh += rate.kwh; buckets[name].p += rate.cost_p;
@@ -1622,7 +1623,7 @@ function renderChargeCost(key, cs, reporting){
   renderChargeRates(`${key}-active-rates`, a);
 
   if (l){
-    const ms = new Date(l.ended) - new Date(l.started);
+    const ms = Number.isFinite(l.duration_seconds) ? l.duration_seconds * 1000 : new Date(l.ended) - new Date(l.started);
     $("lc-when").textContent = dy(l.started) === dy(l.ended) ? dy(l.started) : `${dy(l.started)} → ${dy(l.ended)}`;
     setStats(chargeCostText(l), `${l.kwh.toFixed(l.kwh < 10 ? 2 : 1)} kWh`,
              `${tm(l.started)}–${tm(l.ended)}`, `${fmtDur(ms)} charging`);
@@ -1651,9 +1652,10 @@ function renderChargeCost(key, cs, reporting){
       bits.push(rs[0].price_p <= 0 ? "All free (0p)" : `All at the ${rateName(rs[0].price_p)} rate · ${Number(rs[0].price_p.toFixed(2))}p/kWh`);
     } else if (rs.length > 1){
       bits.push(rs.map(r => `${r.kwh.toFixed(2)} kWh ${rateName(r.price_p)}${r.price_p > 0 ? ` at ${Number(r.price_p.toFixed(2))}p` : ""} (${fmtPence(r.cost_p)})`).join(" + "));
-      if (l.gap_kwh >= 0.05) bits.push(`${l.gap_kwh.toFixed(2)} kWh was reported late by the charger and split between the rates by time`);
+      if (l.gap_kwh >= 0.05) bits.push(`${l.gap_kwh.toFixed(2)} kWh was reported late; unresolved timing remains unpriced`);
     }
-    if (l.unpriced_kwh >= 0.005) bits.push(`${l.unpriced_kwh.toFixed(2)} kWh had no published rate yet, so the cost is a minimum`);
+    if (l.unpriced_kwh >= 0.005) bits.push(`${l.unpriced_kwh.toFixed(2)} kWh is awaiting measured timing or published rates`);
+    if (l.cost_basis) bits.push(l.cost_basis);
   }
   noteEl.textContent = bits.join(" · ");
 }
@@ -1733,9 +1735,12 @@ function applyHistoryCorrections(data){
     // An override replaces an existing device/day. It cannot silently create a new day
     // or erase other sessions that a future, measured ledger records on the same date.
     const row = (result.days || {})[c.day];
-    if (!row || !row[c.device] || !(row.est || []).includes(c.device) || Math.abs(row[c.device][0] - c.kwh) > 0.05) continue;
+    if (!row || !row[c.device] || Math.abs(row[c.device][0] - c.kwh) > 0.05 ||
+        ((row.pricing || {})[c.device] || {}).edf_bill_verified === true) continue;
+    // Measured energy plus the public tariff is still distinct from an EDF bill.
+    // Keep the app-backed cost and expose the independent tariff calculation.
     row[c.device] = [c.kwh, c.cost_p];
-    row.est = row.est.filter(d => d !== c.device);
+    row.est = (row.est || []).filter(d => d !== c.device);
     row.corrections = Object.assign({}, row.corrections, {[c.device]:c});
   }
   return result;
@@ -1756,6 +1761,12 @@ function periodLabel(d, view, short){
   return dateLabel(d, short ? {month:"short"} : {month:"long", year:"numeric"});
 }
 
+function historyCostUnverified(row, dev){
+  if ((row.corrections || {})[dev]) return false;
+  const pricing = (row.pricing || {})[dev];
+  return (row.est || []).includes(dev) || !Array.isArray(row[dev]) ||
+    !!(pricing && (pricing.cost_complete === false || pricing.energy_complete === false));
+}
 function buildHistoryPeriod(start, view){
   const days = (histData || {}).days || {}, dates = historyDates();
   const first = dates[0], today = ukToday(), end = periodNext(start, view);
@@ -1773,9 +1784,11 @@ function buildHistoryPeriod(start, view){
     let devK = 0, devP = 0;
     for (const dev of ["easee", "breaker", "immersion"]){
       const v = row[dev];
-      if (!Array.isArray(v) || !v.slice(0, 2).every(Number.isFinite)) continue;
+      if (!Array.isArray(v) || !v.slice(0, 2).every(Number.isFinite)){
+        p.costUnverified[dev] = true; continue;
+      }
       p.v[dev].kwh += v[0]; p.v[dev].p += v[1]; devK += v[0]; devP += v[1];
-      if ((row.est || []).includes(dev)){
+      if (historyCostUnverified(row, dev)){
         p.costUnverified[dev] = true;
         if (!p.estimated.includes(dev)) p.estimated.push(dev);
       }
@@ -1886,15 +1899,43 @@ function renderHistoryDay(){
   };
   if (!row){ el.innerHTML += '<p class="hist-day-caption">No daily record is available for this date. Missing records are not treated as zero usage.</p>'; return; }
   const estimates = row.est || [];
-  el.innerHTML += '<p class="hist-day-caption">Reconstructed costs marked Unverified are excluded from totals until their original charge records can be checked. Source-backed corrections are identified below.</p>';
-  let totalK = 0, totalP = 0;
+  el.innerHTML += '<p class="hist-day-caption">Costs use measured energy and historically published EDF rates where available; they are tariff calculations, not verified EDF bills. Unverified costs are excluded from totals. Easee app costs are identified separately.</p>';
+  let totalK = 0, totalP = 0, incomplete = false;
   const body = HIST_SERIES.filter(se => se.key !== "rest").map(se => {
-    const v = row[se.key] || [0, 0], est = estimates.includes(se.key);
+    const v = row[se.key], est = estimates.includes(se.key), unknown = historyCostUnverified(row, se.key);
+    const meta = (row.pricing || {})[se.key];
+    incomplete = incomplete || unknown;
+    if (!v) return `<tr><td>${se.name}</td><td>—</td><td>Unverified</td><td class="dim">No record</td></tr>`;
     totalK += v[0]; totalP += v[1];
-    return `<tr><td>${se.name}</td><td>${est ? "≈" : ""}${fmtKwhH(v[0])} kWh</td><td>${est ? "Unverified" : fmtGbpH(v[1])}</td><td class="dim">${(row.corrections || {})[se.key] ? "Easee app" : est ? "Estimated energy" : v[0] === 0 ? "No usage recorded" : "Recorded"}</td></tr>`;
+    const source = (row.corrections || {})[se.key] ? "Easee app" : meta && meta.source === "Easee hourly measured energy" ? "Measured hourly" : est ? "Estimated energy" : v[0] === 0 ? "No usage recorded" : "Recorded";
+    return `<tr><td>${se.name}</td><td>${est ? "≈" : ""}${fmtKwhH(v[0])} kWh</td><td>${unknown ? "Unverified" : fmtGbpH(v[1])}</td><td class="dim">${source}</td></tr>`;
   }).join("");
   el.innerHTML += `<div class="hist-table-wrap"><table class="hist-table"><thead><tr><th>Device</th><th>Energy</th><th>Cost</th><th>Source</th></tr></thead><tbody>${body}` +
-    `<tr class="total"><td>Tracked devices</td><td>${estimates.length ? "≈" : ""}${fmtKwhH(totalK)} kWh</td><td>${estimates.length ? "Unverified" : fmtGbpH(totalP)}</td><td></td></tr></tbody></table></div>`;
+    `<tr class="total"><td>Tracked devices</td><td>${incomplete ? "≈" : ""}${fmtKwhH(totalK)} kWh</td><td>${incomplete ? "Unverified" : fmtGbpH(totalP)}</td><td></td></tr></tbody></table></div>`;
+  for (const [dev, meta] of Object.entries(row.pricing || {})){
+    const name = HIST_SERIES.find(se => se.key === dev);
+    if (!name || meta.source !== "Easee hourly measured energy") continue;
+    const section = document.createElement("div");
+    const caption = document.createElement("p"); caption.className = "hist-day-caption";
+    caption.textContent = `${name.name}: measured energy × EDF published rates. ` +
+      (meta.observed_through ? `Readings through ${new Date(meta.observed_through).toLocaleString("en-GB", {timeZone:"Europe/London"})}. ` : "") +
+      (meta.coverage_complete ? "Complete day. " : "Day coverage incomplete. ") +
+      ((row.corrections || {})[dev] ? `EDF tariff calculation: ${fmtGbpH(meta.cost_p)}. The table retains the separate Easee app cost below.` : "");
+    section.appendChild(caption);
+    if (!historyCostUnverified(row, dev)){
+      const rates = document.createElement("div"); rates.className = "charge-rates";
+      for (const r of meta.rates || []){
+        if (!["peak", "offpeak", "free"].includes(r.band) || ![r.price_p, r.kwh, r.cost_p].every(Number.isFinite)) continue;
+        if (r.kwh < 0.005) continue;
+        const cell = document.createElement("div");
+        cell.innerHTML = `<div class="rate-label">${r.band === "offpeak" ? "Off-peak" : r.band === "peak" ? "Peak" : "Free"} · ${fmtRateP(r.price_p)}</div>` +
+          `<div class="rate-cost">${fmtGbpH(r.cost_p)}</div><div class="rate-energy">${fmtKwhH(r.kwh)} kWh</div>`;
+        rates.appendChild(cell);
+      }
+      section.appendChild(rates);
+    }
+    el.appendChild(section);
+  }
   for (const [dev, correction] of Object.entries(row.corrections || {})){
     const name = HIST_SERIES.find(se => se.key === dev);
     if (!name) continue;
@@ -1942,7 +1983,7 @@ function renderHistory(){
   const series = HIST_SERIES.filter(se => se.key !== "rest" || hasRest);
   const pricingNote = document.getElementById("hist-pricing-note");
   pricingNote.hidden = !periods.some(p => p.costPartial);
-  pricingNote.innerHTML = '<b>Historical pricing needs verification.</b> Reconstructed records can use the wrong tariff. Unverified costs are excluded from cost charts and totals; energy estimates remain available. Source-backed corrections are shown in the individual-day details.';
+  pricingNote.innerHTML = '<b>Historical pricing needs verification.</b> Reconstructed records can use the wrong tariff. Charts show available device costs only. Unverified costs are excluded, and combined totals remain Unverified; energy estimates remain available. Source-backed corrections are shown in the individual-day details.';
   document.getElementById("hist-legend").innerHTML = series.map(se =>
     `<span><i style="background:${se.color}"></i>${se.name}</span>`).join("");
   renderEdfStatus();
@@ -1955,7 +1996,7 @@ function renderHistory(){
   // ---- chart: stacked bars, one per period --------------------------------------------------
   const W = Math.max(300, chart.clientWidth || 600), H = 230, padL = 46, padR = 6, padT = 14, padB = 26;
   const iw = W - padL - padR, ih = H - padT - padB;
-  const totals = periods.map(p => histUnit === "cost" && p.costPartial ? 0 : series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0));
+  const totals = periods.map(p => series.reduce((t, se) => t + (valOf(p, se.key) || 0), 0));
   const ymax = niceMax(Math.max(...totals, histUnit === "cost" ? 50 : 1));
   const band = iw / periods.length, bw = Math.max(6, Math.min(34, band * 0.62));
   const y = (v) => padT + ih - (v / ymax) * ih;
@@ -1970,7 +2011,7 @@ function renderHistory(){
     const cx = padL + band * i + band / 2, x0 = cx - bw / 2;
     let acc = 0;
     const costUnknown = histUnit === "cost" && p.costPartial;
-    const segs = costUnknown ? [] : series.map(se => ({se, v: valOf(p, se.key) || 0})).filter(s => s.v > 0);
+    const segs = series.map(se => ({se, v: valOf(p, se.key) || 0})).filter(s => s.v > 0);
     segs.forEach((sg, j) => {
       const top = y(acc + sg.v), bot = y(acc);
       const h = Math.max(0, bot - top - (j > 0 ? 2 : 0));        // 2px surface gap between segments
@@ -1987,7 +2028,7 @@ function renderHistory(){
   });
   svg += `</svg><div class="hist-tip" id="hist-tip" hidden></div>`;
   chart.innerHTML = svg;
-  if (histUnit === "cost" && !periods.some(p => p.hasData && !p.costPartial))
+  if (histUnit === "cost" && !periods.some(p => p.hasData && series.some(se => valOf(p, se.key) > 0)))
     chart.innerHTML = '<p class="hist-note">Cost chart unavailable for these unverified periods. Choose kWh to explore the recorded energy, or select a day below to inspect its costs and sources.</p>';
 
   const tip = document.getElementById("hist-tip");
@@ -2129,7 +2170,7 @@ function setupHistoryControls(){
   let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderHistory, 150); });
 }
 
-function renderImmersionUsage(usage, offpeakPence){
+function renderImmersionUsage(usage){
   const mainEl = document.getElementById("imm-usage-main");
   const liveEl = document.getElementById("imm-usage-live");
   const noteEl = document.getElementById("imm-usage-note");
@@ -2151,7 +2192,9 @@ function renderImmersionUsage(usage, offpeakPence){
   // Since 2026-09-24 the plug meters its own energy. When a night was fully metered we show
   // what it actually used - no estimates, no ranges. Older or partly-metered nights still
   // fall back to the calibrated estimate, and say so.
-  const ln = usage.last_window || usage.last_night;
+  const pricedRun = usage.last_night && usage.last_night.pricing_version === 2;
+  const ln = pricedRun ? usage.last_night : usage.last_window || usage.last_night;
+  const historicalCost = ln && ln.cost_complete === true ? `≈${fmtPence(ln.cost_p)}` : "Unverified";
   let measuredNight = false;
   const immStats = (cost, kwh, time, lbl) => {
     document.getElementById("imm-lc-cost").textContent = cost || "—";
@@ -2161,19 +2204,19 @@ function renderImmersionUsage(usage, offpeakPence){
   };
   immStats();
   if (ln && ln.on_minutes != null){
-    const label = usage.last_window ? "Last night" : "Last run";
+    const label = usage.last_window && !pricedRun ? "Last night" : "Last run";
     let txt = `${label} ${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
     const immTitle = document.querySelector(".imm-usage .lc-title");
     if (immTitle) immTitle.textContent = label;
     if (ln.measured && ln.measured_kwh != null){
       measuredNight = true;
-      immStats(fmtCost(ln.measured_kwh, offpeakPence), `${Number(ln.measured_kwh).toFixed(2)} kWh`,
+      immStats(historicalCost, `${Number(ln.measured_kwh).toFixed(2)} kWh`,
                fmtMins(ln.element_minutes),
                ln.element_last_at ? `heating · off by ${tm(ln.element_last_at)}` : "heating");
       txt += ` · heated ${fmtMins(ln.element_minutes)}`;
       if (ln.element_last_at) txt += `, thermostat off at ${tm(ln.element_last_at)}`;
       txt += ` · ${Number(ln.measured_kwh).toFixed(2)} kWh`;
-      const cost = fmtCost(ln.measured_kwh, offpeakPence);
+      const cost = historicalCost;
       if (cost) txt += ` · ${cost}`;
     } else {
       const runs = (ln.sessions && ln.sessions > 1) ? ` (${ln.sessions} runs)` : "";
@@ -2184,9 +2227,9 @@ function renderImmersionUsage(usage, offpeakPence){
       if (ln.est_kwh_low != null && ln.est_kwh_high != null && ln.est_kwh_high > ln.est_kwh_low){
         txt += ` (${ln.est_kwh_low}–${ln.est_kwh_high})`;
       }
-      const cost = fmtCost(kwh, offpeakPence);
+      const cost = null;
       if (cost) txt += ` · ≈${cost}`;
-      immStats(cost ? `≈${cost}` : "—", `≈${kwh} kWh`, fmtMins(ln.on_minutes), "plug on (estimate)");
+      immStats("Unverified", `≈${kwh} kWh`, fmtMins(ln.on_minutes), "plug on (estimate)");
     }
     mainEl.textContent = `${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
   } else {
@@ -2202,7 +2245,8 @@ function renderImmersionUsage(usage, offpeakPence){
         ? `Heating now · ${(usage.live_power_w / 1000).toFixed(2)} kW`
         : `Plug on · element off (cylinder at temperature)`;
       live += ` · ${Number(usage.session_measured_kwh || 0).toFixed(2)} kWh so far`;
-      const lcost = fmtCost(usage.session_measured_kwh, offpeakPence);
+      const pricing = usage.session_pricing;
+      const lcost = pricing && pricing.cost_complete && pricing.rates.some(r => r.kwh > 0) ? `≈${fmtPence(pricing.cost_p)} estimate` : null;
       if (lcost) live += ` · ${lcost}`;
     } else {
       live = `Running now · ${fmtMins(usage.session_on_minutes)} so far · meter not reporting`;
@@ -2214,7 +2258,8 @@ function renderImmersionUsage(usage, offpeakPence){
   }
 
   // ---- note -------------------------------------------------------------------------------
-  const bits = [];
+  const bits = ["Energy is integrated from power samples. Costs need recorded rates for the run; today's rate is never applied to old usage."];
+  if (ln && ln.cost_complete && Array.isArray(ln.rates)) bits.push(ln.rates.filter(r => r.kwh >= 0.005).map(r => `${r.kwh.toFixed(2)} kWh ${r.band === "offpeak" ? "off-peak" : r.band} at ${fmtRateP(r.price_p)}`).join(" + "));
   if (measuredNight){
     bits.push("measured by the plug's own meter");
     if (ln.peak_w) bits.push(`element ${Math.round(ln.peak_w)} W`);
