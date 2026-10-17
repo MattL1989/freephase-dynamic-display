@@ -15,6 +15,8 @@ const ctx = vm.createContext({console, Intl, Date, JSON, Number, Math, Object, A
 vm.runInContext(slice('const HIST_SERIES =', 'function renderHistoryBoundary'), ctx);
 vm.runInContext(slice('function applyHistoryCorrections', 'function buildPeriods'), ctx);
 vm.runInContext(slice('function fmtPence', '// ENERGY HISTORY.'), ctx);
+vm.runInContext(slice('function fmtMins', '// CHARGE COST.'), ctx);
+vm.runInContext(slice('function immersionSummary', '// PER-DEVICE MANUAL OVERRIDE'), ctx);
 vm.runInContext(slice('function renderHistoryDay', 'function valOf'), ctx);
 vm.runInContext(slice('function valOf', 'function niceMax'), ctx);
 const run = code => vm.runInContext(code, ctx);
@@ -86,4 +88,31 @@ assert.equal(el('easee-last-rates').hidden, true);
 run('renderChargeCost("easee", null, false)');
 assert.equal(el('easee-lc-cost').textContent, '—');
 assert.equal(el('easee-cost-details').hidden, true);
-console.log('Dashboard syntax, history, charge reconciliation and single-summary regressions passed.');
+// The heater uses the same concise card, with an explicitly estimated, reconciled breakdown.
+ctx.heater = {last_window:{started:'2026-10-17T03:00:07+01:00',ended:'2026-10-17T06:00:17+01:00',
+  window_start:'2026-10-17T03:00:00+01:00',window_end:'2026-10-17T06:00:00+01:00',measured:true,
+  kwh:4.348789,measured_kwh:4.348,metered_pct:99,element_minutes:78.7,element_last_at:'2026-10-17T05:20:16+01:00',
+  cost_p:28.9629,cost_complete:true,cost_estimated:true,reconciled:true,
+  rates:[{band:'offpeak',price_p:6.66,kwh:4.348789,cost_p:28.9629}]}};
+run('renderImmersionUsage(heater)');
+assert.equal(el('imm-lc-cost').textContent, '≈£0.29');
+assert.equal(el('imm-lc-kwh').textContent, '≈4.35 kWh');
+assert.equal(el('imm-lc-time').textContent, '1h 19m');
+assert.match(el('imm-last-rates').innerHTML, /≈£0\.29/);
+assert.match(el('imm-last-rates').innerHTML, /£0\.00/);
+assert.equal(el('imm-last-rates').hidden, false);
+assert.match(el('imm-usage-note').textContent, /Readings cover 99%/);
+assert.doesNotMatch(el('imm-usage-note').textContent, /split is not|split not measured|element 3377|tariff range/);
+// An old controller payload still provides a useful total, without fabricating rate buckets.
+run('heater.last_window.cost_complete = false; heater.last_window.rates = []; heater.last_window.cost_estimate_p = 28.96; renderImmersionUsage(heater)');
+assert.equal(el('imm-lc-cost').textContent, '≈£0.29');
+assert.equal(el('imm-last-rates').hidden, true);
+run('renderImmersionUsage({session_active:true,session_started:"2026-10-17T03:00:00+01:00",live_power_w:3000,session_measured_kwh:1,session_element_minutes:20,session_on_minutes:22,session_metered_pct:99,session_pricing:{cost_p:6.66,cost_complete:true,rates:[{band:"offpeak",price_p:6.66,kwh:1,cost_p:6.66}]}})');
+assert.equal(el('imm-usage-title').textContent, 'Heating now');
+assert.equal(el('imm-lc-cost').textContent, '≈£0.07');
+assert.equal(el('imm-lc-kwh').textContent, '≈1.00 kWh');
+run('renderImmersionUsage(null)');
+assert.equal(el('imm-lc-cost').textContent, '—');
+assert.equal(el('imm-last-rates').hidden, true);
+assert.equal(el('imm-cost-details').hidden, true);
+console.log('Dashboard syntax, history, charger and immersion summary regressions passed.');

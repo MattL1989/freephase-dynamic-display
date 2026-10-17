@@ -213,8 +213,7 @@
   /* Immersion section uses a purple accent so it's visually distinct from the EV charger sections */
   .charge-mode-pill.imm-on{color:var(--purple);border-color:rgba(192,132,252,0.45);
     background:rgba(192,132,252,0.08);animation:pulse 1.6s ease-in-out infinite}
-  /* Usage strip. The plug has no meter, so kWh here is derived from runtime and is labelled
-     as an estimate - see .imm-usage-note, which must stay visible rather than be trimmed. */
+  /* Heater energy is integrated from plug power readings and labelled as an estimate. */
   .imm-usage{margin-top:18px;padding:16px 18px;border-radius:14px;
     background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.22)}
   .imm-usage-main{font-size:16px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
@@ -742,14 +741,16 @@
         </div>
       </div>
       <div class="imm-usage">
-        <div class="lc-live imm-usage-live" id="imm-usage-live" hidden></div>
-        <div class="lc-head"><span class="lc-title">Last night</span><span class="lc-when" id="imm-usage-main">—</span></div>
+        <div class="lc-head"><span class="lc-title" id="imm-usage-title">Last night</span><span class="lc-when" id="imm-usage-main">—</span></div>
         <div class="lc-stats" id="imm-lc-stats">
-          <div><div class="lc-val" id="imm-lc-cost">—</div><div class="lc-lbl">cost</div></div>
+          <div><div class="lc-val" id="imm-lc-cost">—</div><div class="lc-lbl" id="imm-cost-label">estimated total</div></div>
           <div><div class="lc-val" id="imm-lc-kwh">—</div><div class="lc-lbl">energy</div></div>
           <div><div class="lc-val" id="imm-lc-time">—</div><div class="lc-lbl" id="imm-lc-dur">heating</div></div>
         </div>
-        <div class="imm-usage-note" id="imm-usage-note"></div>
+        <div class="charge-rates" id="imm-last-rates" aria-label="Heating cost by rate" hidden></div>
+        <details class="cost-details" id="imm-cost-details"><summary>Cost details</summary>
+          <div class="imm-usage-note" id="imm-usage-note"></div>
+        </details>
       </div>
     </article>
     </div>
@@ -822,7 +823,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-17 clear-charges-v6";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-17 clear-immersion-v7";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1564,7 +1565,7 @@ function fmtChargeMoney(p){ return "£" + (p / 100).toFixed(2); }
 function chargeCostText(sess){
   if (sess.cost_complete === false && Number.isFinite(sess.cost_estimate_p)) return "≈" + fmtChargeMoney(sess.cost_estimate_p);
   if (sess.cost_complete === false && !(sess.rates || []).some(r => r.kwh > 0)) return "Pending";
-  return (sess.cost_complete === false ? "at least " : "") + fmtChargeMoney(sess.cost_p);
+  return (sess.cost_complete === false ? "at least " : sess.cost_estimated ? "≈" : "") + fmtChargeMoney(sess.cost_p);
 }
 
 function rateName(p){
@@ -1605,7 +1606,7 @@ function renderChargeRates(id, session){
   const labels = {offpeak:"Off-peak", peak:"Peak", free:"Free hours", other:"Other recorded rates"};
   const keys = ["offpeak", "peak", ...["free", "other"].filter(k => buckets[k].kwh > 0)];
   el.innerHTML = keys.map(k => `<div><div class="rate-label">${labels[k]}</div>` +
-    `<div class="rate-cost">${fmtChargeMoney(buckets[k].p)}</div><div class="rate-energy">${buckets[k].kwh.toFixed(2)} kWh</div></div>`).join("");
+    `<div class="rate-cost">${session.cost_estimated && buckets[k].p > 0 ? "≈" : ""}${fmtChargeMoney(buckets[k].p)}</div><div class="rate-energy">${session.cost_estimated && buckets[k].kwh > 0 ? "≈" : ""}${buckets[k].kwh.toFixed(2)} kWh</div></div>`).join("");
 }
 
 function displayedCharge(cs){
@@ -2203,113 +2204,59 @@ function setupHistoryControls(){
   let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(renderHistory, 150); });
 }
 
-function renderImmersionUsage(usage){
-  const mainEl = document.getElementById("imm-usage-main");
-  const liveEl = document.getElementById("imm-usage-live");
-  const noteEl = document.getElementById("imm-usage-note");
-  if (!mainEl) return;
+function immersionSummary(usage){
+  if (!usage) return null;
+  if (usage.session_active){
+    const sampled = usage.live_power_w != null || usage.session_metered_pct >= 90;
+    return {...(usage.session_pricing || {}), active:true, sampled,
+      started:usage.session_started, ended:null,
+      kwh:sampled ? usage.session_measured_kwh : usage.session_est_kwh_calibrated,
+      cost_estimated:true, cost_complete:sampled && usage.session_pricing?.cost_complete === true,
+      on_minutes:usage.session_on_minutes, element_minutes:sampled ? usage.session_element_minutes : null,
+      metered_pct:usage.session_metered_pct, heating:usage.live_power_w >= 300};
+  }
+  const run = usage.last_window || usage.last_night;
+  if (!run) return null;
+  return {...run, active:false, sampled:!!run.measured, cost_estimated:true, cost_complete:run.cost_complete === true,
+    kwh:run.kwh ?? (run.measured ? run.measured_kwh : run.est_kwh_calibrated ?? run.est_kwh_max)};
+}
 
-  if (!usage){
-    mainEl.textContent = "Usage tracking not reporting";
-    liveEl.hidden = true;
-    noteEl.textContent = "";
+function renderImmersionUsage(usage){
+  const $ = id => document.getElementById(`imm-${id}`);
+  const s = immersionSummary(usage);
+  const tm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
+  const dy = iso => new Date(iso).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
+  $("cost-details").hidden = !s;
+  renderChargeRates("imm-last-rates", s);
+  $("usage-title").textContent = s?.active ? (s.heating ? "Heating now" : "Heater on") : usage?.last_window ? "Last night" : "Last heating run";
+  if (!s){
+    $("usage-main").textContent = usage ? "No completed run recorded yet" : "Usage tracking not reporting";
+    for (const id of ["lc-cost", "lc-kwh", "lc-time"]) $(id).textContent = "—";
+    $("lc-dur").textContent = "heating time";
+    $("usage-note").textContent = "";
     return;
   }
-
-  const tm = (iso) => new Date(iso).toLocaleTimeString("en-GB",
-    {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
-  const dy = (iso) => new Date(iso).toLocaleDateString("en-GB",
-    {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
-
-  // ---- last completed night --------------------------------------------------------------
-  // Since 2026-09-24 the plug meters its own energy. When a night was fully metered we show
-  // what it actually used - no estimates, no ranges. Older or partly-metered nights still
-  // fall back to the calibrated estimate, and say so.
-  const ln = usage.last_window || usage.last_night;
-  const historicalCost = ln && ln.cost_complete === true ? `≈${fmtPence(ln.cost_p)}`
-    : ln && Number.isFinite(ln.cost_estimate_p) ? `≈${fmtPence(ln.cost_estimate_p)}` : "Pending";
-  let measuredNight = false;
-  const immStats = (cost, kwh, time, lbl) => {
-    document.getElementById("imm-lc-cost").textContent = cost || "—";
-    document.getElementById("imm-lc-kwh").textContent = kwh || "—";
-    document.getElementById("imm-lc-time").textContent = time || "—";
-    document.getElementById("imm-lc-dur").textContent = lbl || "heating";
-  };
-  immStats();
-  if (ln && ln.on_minutes != null){
-    const label = usage.last_window ? "Last night" : "Last run";
-    let txt = `${label} ${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
-    const immTitle = document.querySelector(".imm-usage .lc-title");
-    if (immTitle) immTitle.textContent = label;
-    if (ln.measured && ln.measured_kwh != null){
-      measuredNight = true;
-      immStats(historicalCost, `${Number(ln.measured_kwh).toFixed(2)} kWh`,
-               fmtMins(ln.element_minutes),
-               ln.element_last_at ? `heating · off by ${tm(ln.element_last_at)}` : "heating");
-      txt += ` · heated ${fmtMins(ln.element_minutes)}`;
-      if (ln.element_last_at) txt += `, thermostat off at ${tm(ln.element_last_at)}`;
-      txt += ` · ${Number(ln.measured_kwh).toFixed(2)} kWh`;
-      const cost = historicalCost;
-      if (cost) txt += ` · ${cost}`;
-    } else {
-      const runs = (ln.sessions && ln.sessions > 1) ? ` (${ln.sessions} runs)` : "";
-      txt += ` · plug on ${fmtMins(ln.on_minutes)}${runs}`;
-      if (ln.element_hours_est != null) txt += ` · element ~${ln.element_hours_est}h`;
-      const kwh = (ln.est_kwh_calibrated != null) ? ln.est_kwh_calibrated : ln.est_kwh_max;
-      txt += ` · ≈${kwh} kWh`;
-      if (ln.est_kwh_low != null && ln.est_kwh_high != null && ln.est_kwh_high > ln.est_kwh_low){
-        txt += ` (${ln.est_kwh_low}–${ln.est_kwh_high})`;
-      }
-      const cost = null;
-      if (cost) txt += ` · ≈${cost}`;
-      immStats(historicalCost, `≈${kwh} kWh`, fmtMins(ln.on_minutes), "plug on (estimate)");
-    }
-    mainEl.textContent = `${dy(ln.ended)} · ${tm(ln.started)}–${tm(ln.ended)}`;
-  } else {
-    mainEl.textContent = "No completed run recorded yet";
-  }
-
-  // ---- live, while the plug is on ---------------------------------------------------------
-  if (usage.session_active){
-    let live;
-    if (usage.live_power_w != null){
-      const heating = usage.live_power_w >= 300;
-      live = heating
-        ? `Heating now · ${(usage.live_power_w / 1000).toFixed(2)} kW`
-        : `Plug on · element off (cylinder at temperature)`;
-      live += ` · ${Number(usage.session_measured_kwh || 0).toFixed(2)} kWh so far`;
-      const pricing = usage.session_pricing;
-      const lcost = pricing && pricing.cost_complete && pricing.rates.some(r => r.kwh > 0) ? `≈${fmtPence(pricing.cost_p)} estimate` : null;
-      if (lcost) live += ` · ${lcost}`;
-    } else {
-      live = `Running now · ${fmtMins(usage.session_on_minutes)} so far · meter not reporting`;
-    }
-    liveEl.textContent = live;
-    liveEl.hidden = false;
-  } else {
-    liveEl.hidden = true;
-  }
-
-  // ---- note -------------------------------------------------------------------------------
+  $("lc-cost").textContent = chargeCostText(s);
+  $("cost-label").textContent = s.active ? "estimated cost so far" : "estimated total";
+  $("lc-kwh").textContent = Number.isFinite(s.kwh) ? `≈${s.kwh.toFixed(2)} kWh` : "—";
+  $("lc-time").textContent = fmtMins(s.sampled ? s.element_minutes : s.on_minutes);
+  $("lc-dur").textContent = s.sampled ? "heating time" : "plug on time";
+  const start = s.window_start || s.started, end = s.window_end || s.ended;
+  $("usage-main").textContent = `${dy(start)} · ${tm(start)}–${s.active ? "now" : tm(end)}`;
   const bits = [];
-  if (ln && Number.isFinite(ln.cost_estimate_p)) bits.push(`${ln.estimate_basis}; tariff range ${fmtPence(ln.cost_low_p)}–${fmtPence(ln.cost_high_p)}`);
-  else if (ln && ln.cost_complete) bits.push("Estimated from power samples and recorded historical rates");
-  if (ln && ln.cost_complete && Array.isArray(ln.rates)) bits.push(ln.rates.filter(r => r.kwh >= 0.005).map(r => `${r.kwh.toFixed(2)} kWh ${r.band === "offpeak" ? "off-peak" : r.band} at ${fmtRateP(r.price_p)}`).join(" + "));
-  if (measuredNight){
-    bits.push("measured by the plug's own meter");
-    if (ln.peak_w) bits.push(`element ${Math.round(ln.peak_w)} W`);
-    if (ln.metered_pct != null) bits.push(`${ln.metered_pct}% of the run metered`);
-  } else if (ln && ln.est_kwh_calibrated != null){
-    bits.push("estimated — this night predates the metering plug or was only partly metered");
-    bits.push(`${ln.duty_note || "calibrated against half-hourly meter data"}; the brackets are the measured night-to-night spread, not error bars`);
+  if (s.reconciled || s.cost_complete){
+    bits.push("Estimated from plug power readings and the tariff at the time.");
+    if (Number.isFinite(s.metered_pct)) bits.push(`Readings cover ${s.metered_pct}% of the run.`);
+    const prices = [...new Set((s.rates || []).filter(r => r.kwh > 0).map(r => r.price_p))];
+    if (prices.length === 1) bits.push(`Recorded energy was charged at ${fmtRateP(prices[0])}/kWh.`);
+  } else {
+    bits.push(s.sampled ? "Estimated from recorded power readings and historical rates." : "Estimated from the heater's recorded runtime and historical rates.");
+    bits.push("A complete peak/off-peak breakdown is not available.");
+    if (Number.isFinite(s.cost_low_p) && Number.isFinite(s.cost_high_p) && s.cost_high_p - s.cost_low_p >= 1)
+      bits.push(`Possible cost: ${fmtChargeMoney(s.cost_low_p)}–${fmtChargeMoney(s.cost_high_p)}.`);
   }
-  if (ln && ln.end_reason){
-    const why = {window_end:"ended when the hot-water window closed", max_runtime:"stopped by the safety cutoff",
-                 switched_off:"switched off", startup:"interrupted by a controller restart",
-                 before_window:"switched off before the window"}[ln.end_reason] || ln.end_reason;
-    bits.push(`last run ${why}`);
-  }
-  noteEl.textContent = bits.join(" · ");
+  if (s.element_last_at && !s.active) bits.push(`Last heating was recorded at ${tm(s.element_last_at)}.`);
+  $("usage-note").textContent = bits.join(" ");
 }
 
 // ------------------------------------------------------------------
