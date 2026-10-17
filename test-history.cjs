@@ -14,7 +14,7 @@ const ctx = vm.createContext({console, Intl, Date, JSON, Number, Math, Object, A
   document: {getElementById: el, createElement: () => ({children:[], appendChild(x){this.children.push(x)}})}});
 vm.runInContext(slice('const HIST_SERIES =', 'function renderHistoryBoundary'), ctx);
 vm.runInContext(slice('function applyHistoryCorrections', 'function buildPeriods'), ctx);
-vm.runInContext(slice('function fmtPence', 'function renderChargeCost'), ctx);
+vm.runInContext(slice('function fmtPence', '// ENERGY HISTORY.'), ctx);
 vm.runInContext(slice('function renderHistoryDay', 'function valOf'), ctx);
 vm.runInContext(slice('function valOf', 'function niceMax'), ctx);
 const run = code => vm.runInContext(code, ctx);
@@ -40,7 +40,7 @@ assert.equal(run('periodValueText(buildHistoryPeriod(parseYmd("2026-10-01"), "da
 assert.equal(run('chargeCostText({cost_complete:false, rates:[], cost_p:0})'), 'Pending');
 assert.equal(run('chargeCostText({cost_complete:true, rates:[], cost_p:340.17})'), '£3.40');
 assert.equal(run('chargeCostText({cost_complete:false, rates:[], cost_p:0, cost_estimate_p:167.43})'), '≈£1.67');
-run('currentTariff = {offpeak_price_p:6.66, peak_price_p:29.759}; renderChargeRates("test", {kwh:1,rates:[{band:"peak",price_p:31.24695,kwh:1,cost_p:31.24695}]})');
+run('currentTariff = {offpeak_price_p:6.66, peak_price_p:29.759}; renderChargeRates("test", {kwh:1,cost_p:31.24695,rates:[{band:"peak",price_p:31.24695,kwh:1,cost_p:31.24695}]})');
 assert.doesNotMatch(el('test').innerHTML,/Other recorded/,'historic band comes from the record');
 assert.equal(run('periodNext(parseYmd("2026-10-25"),"day").toISOString().slice(0,10)'), '2026-10-26');
 // A mismatched day total cannot overwrite an additional measured session.
@@ -54,4 +54,36 @@ assert.equal(run('periodValueText(buildHistoryPeriod(parseYmd("2026-10-01"), "da
 run('delete histData.days["2026-10-01"].breaker');
 assert.equal(run('periodValueText(buildHistoryPeriod(parseYmd("2026-10-01"), "day"), "breaker")'), '—');
 assert.match(run('periodTotalText(buildHistoryPeriod(parseYmd("2026-10-01"), "day"), 1556)'), /≈£15\.56 \+ missing/);
-console.log('Dashboard syntax and estimate/total/missing-data rendering assertions passed.');
+// Reproduce both user screenshots: one summary, no partial breakdown beside a full estimate.
+ctx.easee = {active:{started:'2026-10-16T23:00:12+01:00',last_charging_at:'2026-10-17T01:09:32+01:00',kwh:12.183,
+  cost_p:48.45,cost_estimate_p:81.14,cost_complete:false,charging:false,unplugged:true},
+  last:{started:'2026-10-16T22:00:15Z',ended:'2026-10-17T00:09:57Z',kwh:12.183408,cost_p:81.1415,
+    cost_complete:true,reconciled:true,duration_seconds:5981,rates:[{band:'offpeak',price_p:6.66,kwh:12.183408,cost_p:81.1415}]}};
+run('renderChargeCost("easee", easee, true)');
+assert.equal(el('easee-lc-title').textContent, 'Last charge');
+assert.equal(el('easee-lc-cost').textContent, '£0.81');
+assert.equal(el('easee-lc-kwh').textContent, '12.18 kWh');
+assert.equal(el('easee-lc-dur').textContent, '1h 40m charging');
+assert.match(el('easee-last-rates').innerHTML, /£0\.81/);
+assert.doesNotMatch(html, /id="easee-active-rates"|Unplugged · finalising|Costs are a minimum/);
+ctx.breaker = {last:{started:'2026-10-16T23:00:12+01:00',ended:'2026-10-17T01:53:41+01:00',kwh:7.81,
+  cost_p:48.62,cost_estimate_p:52.0146,cost_low_p:52.0146,cost_high_p:52.0146,cost_complete:false,
+  rates:[{band:'offpeak',price_p:6.66,kwh:7.3,cost_p:48.62}]}};
+run('renderChargeCost("breaker", breaker, true)');
+assert.equal(el('breaker-lc-cost').textContent, '≈£0.52');
+assert.equal(el('breaker-last-rates').hidden, true);
+assert.equal(el('breaker-last-rates').innerHTML, '');
+run('breaker.last.cost_p = 52.0146; breaker.last.cost_complete = true; breaker.last.rates = [{band:"offpeak",price_p:6.66,kwh:7.81,cost_p:52.0146}]; renderChargeCost("breaker", breaker, true)');
+assert.equal(el('breaker-lc-cost').textContent, '£0.52');
+assert.equal(el('breaker-last-rates').hidden, false);
+assert.match(el('breaker-last-rates').innerHTML, /£0\.52/);
+assert.equal(el('breaker-lc-dur').textContent, '2h 53m elapsed');
+// A genuine later charge is still displayed, with its own totals and status.
+run('easee.active = {...easee.active, started:"2026-10-17T08:00:00Z",last_charging_at:"2026-10-17T08:10:00Z",charging:true,unplugged:false,kwh:1}; renderChargeCost("easee", easee, true)');
+assert.equal(el('easee-lc-title').textContent, 'Charging now');
+assert.equal(el('easee-lc-kwh').textContent, '1.00 kWh');
+assert.equal(el('easee-last-rates').hidden, true);
+run('renderChargeCost("easee", null, false)');
+assert.equal(el('easee-lc-cost').textContent, '—');
+assert.equal(el('easee-cost-details').hidden, true);
+console.log('Dashboard syntax, history, charge reconciliation and single-summary regressions passed.');

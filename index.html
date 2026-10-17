@@ -229,6 +229,9 @@
   .charge-cost-live{font-size:14px;color:var(--cyan);font-weight:600;margin-top:5px;
     font-variant-numeric:tabular-nums}
   .charge-cost-note{font-size:12px;color:var(--text-dim);margin-top:7px;line-height:1.45}
+  .cost-details{margin-top:14px;font-size:12px;color:var(--text-dim)}
+  .cost-details summary{cursor:pointer;padding:5px 0}
+  .cost-details[hidden]{display:none}
   .charge-rates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px;
     padding-top:14px;border-top:1px solid var(--border)}
   .charge-rates[hidden]{display:none}
@@ -567,17 +570,16 @@
         </div>
       </div>
       <div class="charge-cost">
-        <div class="lc-live" id="easee-cost-live" hidden></div>
-        <div class="charge-rates" id="easee-active-rates" aria-label="Current charge by rate" hidden></div>
-        <div class="lc-head"><span class="lc-title">Last charge</span><span class="lc-when" id="easee-lc-when">—</span></div>
-        <div class="charge-cost-main" id="easee-cost-main" hidden></div>
+        <div class="lc-head"><span class="lc-title" id="easee-lc-title">Last charge</span><span class="lc-when" id="easee-lc-when">—</span></div>
         <div class="lc-stats" id="easee-lc-stats">
-          <div><div class="lc-val" id="easee-lc-cost">—</div><div class="lc-lbl">cost</div></div>
+          <div><div class="lc-val" id="easee-lc-cost">—</div><div class="lc-lbl" id="easee-cost-label">total cost</div></div>
           <div><div class="lc-val" id="easee-lc-kwh">—</div><div class="lc-lbl">energy</div></div>
           <div><div class="lc-val" id="easee-lc-time">—</div><div class="lc-lbl" id="easee-lc-dur">charging</div></div>
         </div>
         <div class="charge-rates" id="easee-last-rates" aria-label="Last charge by rate" hidden></div>
-        <div class="charge-cost-note" id="easee-cost-note"></div>
+        <details class="cost-details" id="easee-cost-details"><summary>Cost details</summary>
+          <div class="charge-cost-note" id="easee-cost-note"></div>
+        </details>
       </div>
       <details class="sched" id="easee-sched">
         <summary class="sched-head">
@@ -656,17 +658,16 @@
         </div>
       </div>
       <div class="charge-cost">
-        <div class="lc-live" id="breaker-cost-live" hidden></div>
-        <div class="charge-rates" id="breaker-active-rates" aria-label="Current charge by rate" hidden></div>
-        <div class="lc-head"><span class="lc-title">Last charge</span><span class="lc-when" id="breaker-lc-when">—</span></div>
-        <div class="charge-cost-main" id="breaker-cost-main" hidden></div>
+        <div class="lc-head"><span class="lc-title" id="breaker-lc-title">Last charge</span><span class="lc-when" id="breaker-lc-when">—</span></div>
         <div class="lc-stats" id="breaker-lc-stats">
-          <div><div class="lc-val" id="breaker-lc-cost">—</div><div class="lc-lbl">cost</div></div>
+          <div><div class="lc-val" id="breaker-lc-cost">—</div><div class="lc-lbl" id="breaker-cost-label">total cost</div></div>
           <div><div class="lc-val" id="breaker-lc-kwh">—</div><div class="lc-lbl">energy</div></div>
           <div><div class="lc-val" id="breaker-lc-time">—</div><div class="lc-lbl" id="breaker-lc-dur">charging</div></div>
         </div>
         <div class="charge-rates" id="breaker-last-rates" aria-label="Last charge by rate" hidden></div>
-        <div class="charge-cost-note" id="breaker-cost-note"></div>
+        <details class="cost-details" id="breaker-cost-details"><summary>Cost details</summary>
+          <div class="charge-cost-note" id="breaker-cost-note"></div>
+        </details>
       </div>
       <details class="sched" id="breaker-sched">
         <summary class="sched-head">
@@ -821,7 +822,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-16 useful-costs-v5";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-17 clear-charges-v6";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1556,11 +1557,14 @@ function chargeRatesText(sess){
     : `${r.kwh.toFixed(2)} kWh at ${fmtRateP(r.price_p)} (${fmtPence(r.cost_p)})`).join(" + ");
 }
 
-// A session with energy drawn while no rate was known has a lower-bound cost until repriced.
+// Use one currency format throughout a charge card.
+function fmtChargeMoney(p){ return "£" + (p / 100).toFixed(2); }
+
+// An estimate is a whole-session total; a partial measured cost is only a lower bound.
 function chargeCostText(sess){
-  if (sess.cost_complete === false && Number.isFinite(sess.cost_estimate_p)) return "≈" + fmtPence(sess.cost_estimate_p);
+  if (sess.cost_complete === false && Number.isFinite(sess.cost_estimate_p)) return "≈" + fmtChargeMoney(sess.cost_estimate_p);
   if (sess.cost_complete === false && !(sess.rates || []).some(r => r.kwh > 0)) return "Pending";
-  return (sess.cost_complete === false ? "at least " : "") + fmtPence(sess.cost_p);
+  return (sess.cost_complete === false ? "at least " : "") + fmtChargeMoney(sess.cost_p);
 }
 
 function rateName(p){
@@ -1574,95 +1578,87 @@ function fmtDur(ms){
   return h ? `${h}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
 }
 
-// These are recorded per-rate charge totals, never a reprice of old energy at today's rate.
-function renderChargeRates(id, session){
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.hidden = !session;
-  if (!session){ el.textContent = ""; return; }
+// Only show a rate breakdown if it reconciles with the displayed whole charge.
+function chargeRateBuckets(session){
+  if (!session || session.cost_complete === false) return null;
   const rates = Array.isArray(session.rates) ? session.rates : [];
+  if (!rates.length) return null;
   const buckets = {offpeak:{kwh:0, p:0}, peak:{kwh:0, p:0}, free:{kwh:0, p:0}, other:{kwh:0, p:0}};
   for (const rate of rates){
-    if (![rate.price_p, rate.kwh, rate.cost_p].every(v => typeof v === "number" && Number.isFinite(v))) continue;
+    if (![rate.price_p, rate.kwh, rate.cost_p].every(v => typeof v === "number" && Number.isFinite(v))) return null;
     const matches = v => v != null && Math.abs(rate.price_p - v) < 0.001;
     const name = ["offpeak", "peak", "free"].includes(rate.band) ? rate.band : rate.price_p === 0 ? "free"
       : matches((currentTariff || {}).offpeak_price_p) ? "offpeak"
       : matches((currentTariff || {}).peak_price_p) ? "peak" : "other";
     buckets[name].kwh += rate.kwh; buckets[name].p += rate.cost_p;
   }
-  if (!rates.length && session.kwh > 0){
-    el.innerHTML = Number.isFinite(session.cost_estimate_p)
-      ? `<div><div class="rate-label">Estimated cost</div><div class="rate-cost">≈${fmtPence(session.cost_estimate_p)}</div></div>` +
-        `<div class="rate-note">${session.estimate_basis || "Rate split estimated"}. Tariff range for this energy: ${fmtPence(session.cost_low_p)}–${fmtPence(session.cost_high_p)}.</div>`
-      : '<div class="rate-note">Rate breakdown not recorded for this charge.</div>'; return;
-  }
+  const total = Object.values(buckets).reduce((a, b) => ({kwh:a.kwh+b.kwh, p:a.p+b.p}), {kwh:0,p:0});
+  return Math.abs(total.kwh - session.kwh) <= 0.01 && Math.abs(total.p - session.cost_p) <= 0.05 ? buckets : null;
+}
+
+function renderChargeRates(id, session){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const buckets = chargeRateBuckets(session);
+  el.hidden = !buckets;
+  if (!buckets){ el.innerHTML = ""; return; }
   const labels = {offpeak:"Off-peak", peak:"Peak", free:"Free hours", other:"Other recorded rates"};
   const keys = ["offpeak", "peak", ...["free", "other"].filter(k => buckets[k].kwh > 0)];
   el.innerHTML = keys.map(k => `<div><div class="rate-label">${labels[k]}</div>` +
-    `<div class="rate-cost">${fmtPence(buckets[k].p)}</div><div class="rate-energy">${buckets[k].kwh.toFixed(2)} kWh</div></div>`).join("");
-  const unpriced = Number(session.unpriced_kwh || 0);
-  if (unpriced >= 0.005 || session.cost_complete === false)
-    el.innerHTML += `<div class="rate-note">${unpriced >= 0.005 ? `${unpriced.toFixed(2)} kWh is still unpriced. ` : ""}Costs are a minimum until all energy has a published rate.</div>`;
+    `<div class="rate-cost">${fmtChargeMoney(buckets[k].p)}</div><div class="rate-energy">${buckets[k].kwh.toFixed(2)} kWh</div></div>`).join("");
+}
+
+function displayedCharge(cs){
+  const a = cs && cs.active, l = cs && cs.last;
+  // Older controller payloads can contain the same charge twice during unplug settling.
+  const duplicate = a && l && !a.charging && l.reconciled &&
+    Math.abs(new Date(a.started) - new Date(l.started)) <= 120000 &&
+    Math.abs(new Date(a.last_charging_at) - new Date(l.ended)) <= 120000 &&
+    Math.abs(a.kwh - l.kwh) <= 0.01;
+  const active = a && a.kwh >= 0.05 && !duplicate;
+  return {session:active ? a : l, active:!!active};
 }
 
 function renderChargeCost(key, cs, reporting){
-  const $ = (id) => document.getElementById(`${key}-${id}`);
-  const liveEl = $("cost-live"), noteEl = $("cost-note"), msgEl = $("cost-main");
-  if (!liveEl) return;
-  const tm = (iso) => new Date(iso).toLocaleTimeString("en-GB",
-    {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
-  const dy = (iso) => new Date(iso).toLocaleDateString("en-GB",
-    {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
-  const setStats = (cost, kwh, time, dur) => {
-    $("lc-cost").textContent = cost; $("lc-kwh").textContent = kwh;
-    $("lc-time").textContent = time; $("lc-dur").textContent = dur;
-  };
-  if (!reporting || !cs){
-    $("lc-when").textContent = "not reporting";
-    setStats("—", "—", "—", "charging"); liveEl.hidden = true; noteEl.textContent = "";
-    renderChargeRates(`${key}-last-rates`, null); renderChargeRates(`${key}-active-rates`, null); return;
+  const $ = id => document.getElementById(`${key}-${id}`);
+  const {session:s, active} = displayedCharge(reporting ? cs : null);
+  const tm = iso => new Date(iso).toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit", timeZone:"Europe/London"});
+  const dy = iso => new Date(iso).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
+  $("lc-title").textContent = active ? (s.unplugged ? "Charge ending" : s.charging ? "Charging now" : "Charge paused") : "Last charge";
+  $("cost-details").hidden = !s;
+  renderChargeRates(`${key}-last-rates`, s);
+  if (!s){
+    for (const id of ["lc-cost", "lc-kwh", "lc-time"]) $(id).textContent = "—";
+    $("lc-when").textContent = reporting ? "none recorded yet" : "not reporting";
+    $("lc-dur").textContent = ""; $("cost-note").textContent = "";
+    $("cost-label").textContent = "total cost";
+    return;
   }
-  const l = cs.last, a = cs.active;
-  renderChargeRates(`${key}-last-rates`, l);
-  renderChargeRates(`${key}-active-rates`, a);
-
-  if (l){
-    const ms = Number.isFinite(l.duration_seconds) ? l.duration_seconds * 1000 : new Date(l.ended) - new Date(l.started);
-    $("lc-when").textContent = dy(l.started) === dy(l.ended) ? dy(l.started) : `${dy(l.started)} → ${dy(l.ended)}`;
-    setStats(chargeCostText(l), `${l.kwh.toFixed(l.kwh < 10 ? 2 : 1)} kWh`,
-             `${tm(l.started)}–${tm(l.ended)}`, `${fmtDur(ms)} charging`);
+  const end = s.ended || s.last_charging_at || s.started;
+  $("lc-when").textContent = dy(s.started) === dy(end) ? dy(s.started) : `${dy(s.started)} → ${dy(end)}`;
+  $("lc-cost").textContent = chargeCostText(s);
+  $("lc-kwh").textContent = `${s.kwh.toFixed(2)} kWh`;
+  $("lc-time").textContent = `${tm(s.started)}–${active && s.charging ? "now" : tm(end)}`;
+  $("lc-dur").textContent = active ? (s.unplugged ? "Saving completed charge" : s.charging ? "Charging" : "Waiting to resume")
+    : Number.isFinite(s.duration_seconds) ? `${fmtDur(s.duration_seconds * 1000)} charging`
+    : `${fmtDur(new Date(end) - new Date(s.started))} elapsed`;
+  const estimated = s.cost_complete === false && Number.isFinite(s.cost_estimate_p);
+  $("cost-label").textContent = estimated ? "estimated total" : s.cost_complete === false ? "cost recorded so far" : active ? "cost so far" : "total cost";
+  const buckets = chargeRateBuckets(s);
+  let note;
+  if (estimated){
+    note = "Estimated from recorded energy and the tariff at the time.";
+    if (Number.isFinite(s.cost_low_p) && Number.isFinite(s.cost_high_p) && s.cost_high_p - s.cost_low_p >= 1)
+      note += ` Possible cost: ${fmtChargeMoney(s.cost_low_p)}–${fmtChargeMoney(s.cost_high_p)}.`;
+    if (!buckets) note += " The peak/off-peak split is not available.";
+  } else if (s.cost_complete === false){
+    note = "The charger is still syncing energy records. This cost will update automatically.";
   } else {
-    $("lc-when").textContent = "none recorded yet";
-    setStats("—", "—", "—", "charging");
+    const rates = (s.rates || []).filter(r => r.kwh >= 0.005);
+    note = rates.map(r => `${r.kwh.toFixed(2)} kWh × ${fmtRateP(r.price_p)}/kWh`).join(" + ");
+    note += (note ? ". " : "") + "Calculated using the published tariff for this charge.";
   }
-
-  if (a){
-    const lead = a.unplugged ? "Unplugged · finalising"
-      : (a.charging === false)
-        ? (key === "easee" ? "Plugged in · not charging" : "Paused")
-        : "Charging now";
-    liveEl.textContent = `${lead} · since ${dy(a.started)} ${tm(a.started)} · ${a.kwh.toFixed(2)} kWh · ${chargeCostText(a)} so far`;
-    liveEl.style.color = (a.charging && !a.unplugged) ? "var(--cyan)" : "var(--text-dim)";
-    liveEl.hidden = false;
-  } else {
-    liveEl.hidden = true;
-  }
-
-  // One quiet line: which rate(s) the last charge was billed at. Detail only when it matters.
-  const bits = [];
-  if (l){
-    const rs = (l.rates || []).filter(r => r.kwh >= 0.005);
-    if (rs.length === 1){
-      bits.push(rs[0].price_p <= 0 ? "All free (0p)" : `All at the ${rateName(rs[0].price_p)} rate · ${Number(rs[0].price_p.toFixed(2))}p/kWh`);
-    } else if (rs.length > 1){
-      bits.push(rs.map(r => `${r.kwh.toFixed(2)} kWh ${rateName(r.price_p)}${r.price_p > 0 ? ` at ${Number(r.price_p.toFixed(2))}p` : ""} (${fmtPence(r.cost_p)})`).join(" + "));
-      if (l.gap_kwh >= 0.05) bits.push(`${l.gap_kwh.toFixed(2)} kWh was reported late; unresolved timing remains unpriced`);
-    }
-    if (l.unpriced_kwh >= 0.005 && !Number.isFinite(l.cost_estimate_p)) bits.push(`${l.unpriced_kwh.toFixed(2)} kWh is awaiting measured timing or published rates`);
-    if (l.cost_complete === false && Number.isFinite(l.cost_estimate_p)) bits.push("Estimated from recorded energy and historical tariff; rate split is not measured");
-    if (l.cost_basis) bits.push(l.cost_basis);
-  }
-  noteEl.textContent = bits.join(" · ");
+  $("cost-note").textContent = note;
 }
 
 // ------------------------------------------------------------------
