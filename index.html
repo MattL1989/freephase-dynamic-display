@@ -532,7 +532,7 @@
       <div class="charge-section-head">
         <div class="device-identity">
           <span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-6 6v4m-3-4h6"/></svg></span>
-          <div><div class="device-kind">CUPRA · Battery electric</div><h3 class="charge-section-title" id="easee-title">Easee One Charger</h3></div>
+          <div><div class="device-kind">BYD Seal · Battery electric</div><h3 class="charge-section-title" id="easee-title">Easee One Charger</h3></div>
         </div>
         <p class="charge-cap">7 kW · 32 A</p>
         <div class="section-controls">
@@ -823,7 +823,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-17 clear-immersion-v7";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-21 byd-seal-v8";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1669,7 +1669,7 @@ function renderChargeCost(key, cs, reporting){
 // Colours: validated categorical slots 1-4 for the dark surface (dataviz palette, CVD-checked).
 // ------------------------------------------------------------------
 const HIST_SERIES = [
-  {key: "easee",     name: "Easee · CUPRA",   short: "CUPRA",     color: "#3987e5"},
+  {key: "easee",     name: "Easee One",       short: "Easee",     color: "#3987e5"},
   {key: "breaker",   name: "POWER16 · Lexus", short: "Lexus",     color: "#d95926"},
   {key: "immersion", name: "Immersion",       short: "Hot water", color: "#199e70"},
   {key: "rest",      name: "Rest of house",   short: "Rest",      color: "#c98500"},
