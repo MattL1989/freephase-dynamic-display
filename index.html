@@ -843,7 +843,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-23 byd-telemetry-v9";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-23 byd-telemetry-v10";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1379,6 +1379,9 @@ function renderByd(state = bydState, now = Date.now(), readFailed = bydFetchFail
   if ((!state || state.status === "not_connected") && !readFailed){
     el("byd-tag").textContent = "Not connected";
     el("byd-status").textContent = "Connect your BYD account using the private setup window on your computer.";
+  } else if (state?.status === "paused"){
+    el("byd-tag").textContent = "Updates paused";
+    el("byd-status").textContent = "Connect a separate BYD account to keep your phone signed in.";
   } else if (state?.status === "sign_in_required"){
     el("byd-tag").textContent = hasData ? "Last known" : "Sign-in needed";
     el("byd-status").textContent = "Reconnect your BYD account using the private setup window.";
@@ -1402,7 +1405,7 @@ async function loadBydState(){
     if (!Array.isArray(rows)) throw new Error("Invalid car data response");
     const value = rows.length ? rows[0].value : null;
     const state = typeof value === "string" ? JSON.parse(value) : value;
-    if (state && (typeof state !== "object" || state.schema !== 1 || !["not_connected","ok","unavailable","sign_in_required"].includes(state.status))) throw new Error("Unsupported car data");
+    if (state && (typeof state !== "object" || state.schema !== 1 || !["not_connected","ok","unavailable","sign_in_required","paused"].includes(state.status))) throw new Error("Unsupported car data");
     bydState = state;
     bydFetchFailed = false;
   } catch (_) { bydFetchFailed = true; }

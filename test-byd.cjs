@@ -44,6 +44,10 @@ assert.equal(el('byd-battery').textContent,'94');
 assert.match(el('byd-status').textContent,/interrupted/);
 run('renderByd({...state,status:"sign_in_required"}, now, false)');
 assert.match(el('byd-status').textContent,/Reconnect/);
+run('renderByd({...state,status:"paused"}, now, false)');
+assert.equal(el('byd-tag').textContent,'Updates paused');
+assert.equal(el('byd-battery').textContent,'94');
+assert.match(el('byd-status').textContent,/separate BYD account/);
 // Cloud errors retain last good data; an absent row is an unconnected state.
 (async () => {
   context.fetchJSON = async () => [{value:JSON.stringify(context.state)}];
