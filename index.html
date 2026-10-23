@@ -197,6 +197,10 @@
   .vehicle-note{font-size:12px;line-height:1.5;color:var(--text-dim);margin:8px 0 0}
   .vehicle-card[data-stale="true"] .vehicle-tag{color:#fbbf24}
   .vehicle-card [hidden]{display:none}
+  .device-breaker .vehicle-card{background:rgba(251,146,60,0.05);border-color:rgba(251,146,60,0.25)}
+  .device-breaker .vehicle-battery{accent-color:#fb923c}
+  .vehicle-check{font-size:12px;line-height:1.5;margin:12px 0 0;padding-top:10px;border-top:1px solid var(--border);color:var(--text-dim)}
+  .vehicle-check[data-alert="true"]{color:#fbbf24;font-weight:650}
   .charge-section .lc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .charge-section .lc-stats > div:last-child{grid-column:1 / -1}
   .charge-section .lc-val{font-size:24px;white-space:normal;overflow-wrap:anywhere}
@@ -639,7 +643,7 @@
       <div class="charge-section-head">
         <div class="device-identity">
           <span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-6 6v4m-3-4h6"/></svg></span>
-          <div><div class="device-kind">Lexus · Plug-in hybrid</div><h3 class="charge-section-title" id="breaker-title">POWER16 Charger</h3></div>
+          <div><div class="device-kind">Lexus RX 450h+ · Plug-in hybrid</div><h3 class="charge-section-title" id="breaker-title">POWER16 Charger</h3></div>
         </div>
         <p class="charge-cap">3.7 kW · 16 A · Type 2</p>
         <div class="section-controls">
@@ -652,6 +656,18 @@
         </div>
       </div>
       <div id="breaker-override-status" class="override-status"></div>
+
+      <section class="vehicle-card" id="lexus-card" aria-labelledby="lexus-title">
+        <div class="vehicle-head"><h4 id="lexus-title">Lexus RX 450h+</h4><span class="vehicle-tag" id="lexus-tag">Car data</span></div>
+        <div class="vehicle-values" id="lexus-values" hidden>
+          <div><div class="metric-label">EV battery</div><div class="metric-value"><span id="lexus-battery">—</span><span class="unit">%</span></div></div>
+          <div><div class="metric-label">Electric range</div><div class="metric-value"><span id="lexus-range">—</span><span class="unit">miles</span></div></div>
+        </div>
+        <progress class="vehicle-battery" id="lexus-meter" max="100" value="0" aria-label="Lexus usable EV battery percentage" hidden></progress>
+        <p class="vehicle-note" id="lexus-status" role="status">Loading car connection…</p>
+        <p class="vehicle-note" id="lexus-updated" hidden></p>
+        <p class="vehicle-check" id="lexus-check" role="status" hidden></p>
+      </section>
 
       <div id="tuya-faults" class="fault-banner unknown">Breaker health unknown</div>
       <div class="charge-grid">
@@ -843,7 +859,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-23 byd-telemetry-v10";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-23 lexus-telemetry-v11";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1412,6 +1428,81 @@ async function loadBydState(){
   renderByd();
 }
 // END BYD VEHICLE.
+// LEXUS VEHICLE. Car telemetry and server-side overnight observation only.
+let lexusState = null;
+let lexusFetchFailed = false;
+function renderLexus(state = lexusState, now = Date.now(), readFailed = lexusFetchFailed){
+  const el = id => document.getElementById(id);
+  const num = (v, max) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max ? v : null;
+  const battery = num(state?.battery_pct, 100), range = num(state?.electric_range_miles, 1500);
+  const hasData = battery !== null || range !== null;
+  const vehicleAt = Date.parse(state?.vehicle_updated_at || ""), checkedAt = Date.parse(state?.checked_at || "");
+  const validTime = Number.isFinite(vehicleAt) && vehicleAt <= now + 300000;
+  const fresh = validTime && now - vehicleAt <= 30*60000 && Number.isFinite(checkedAt) && checkedAt <= now+300000 && now-checkedAt <= 25*60000;
+  const stale = !fresh || readFailed || state?.status !== "ok";
+  const labels = {plugged_in:"Plugged in · waiting to charge", disconnected:"Not connected", charging:"Charging", complete:"Charge complete"};
+  el("lexus-card").dataset.stale = String(stale);
+  el("lexus-values").hidden = !hasData;
+  el("lexus-battery").textContent = battery === null ? "—" : String(Math.round(battery));
+  el("lexus-range").textContent = range === null ? "—" : String(Math.round(range));
+  el("lexus-meter").hidden = battery === null;
+  el("lexus-meter").value = battery ?? 0;
+  el("lexus-updated").hidden = !state;
+  el("lexus-updated").textContent = validTime ? "Lexus updated " + new Date(vehicleAt).toLocaleString("en-GB", {
+    timeZone:"Europe/London", weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"
+  }) : "Lexus has not supplied an update time.";
+  if (!state && !readFailed){
+    el("lexus-tag").textContent = "Not connected";
+    el("lexus-status").textContent = "Connect your Lexus account using the private setup window.";
+  } else if (state?.status === "sign_in_required"){
+    el("lexus-tag").textContent = "Sign-in needed";
+    el("lexus-status").textContent = "Reconnect your Lexus account using the private setup window.";
+  } else if (stale){
+    el("lexus-tag").textContent = hasData ? "Last known" : "Waiting for data";
+    el("lexus-status").textContent = readFailed || state?.status !== "ok" ? "Connection interrupted. Waiting for a fresh reading." : "Waiting for a newer reading from the car.";
+  } else {
+    el("lexus-tag").textContent = "From Lexus";
+    el("lexus-status").textContent = labels[state.charging_status] || "Cable status not reported";
+  }
+  const check = state?.charge_check;
+  const checkAt = Date.parse(check?.checked_at || "");
+  const checkFresh = !readFailed && Number.isFinite(checkAt) && checkAt <= now+30000 && now-checkAt <= 5*60000;
+  const checkLabels = {
+    waiting_window:"Overnight charging checks are automatic.",
+    not_connected:"Overnight check: car not connected.",
+    full:"Overnight check: battery full or charge complete.",
+    checking:"Checking that home charging starts…",
+    car_charging:"Lexus reports charging. Checking the home meter.",
+    manual_off:"Overnight check paused · POWER16 is set to Off.",
+    vehicle_schedule:"The Lexus has a charging timer enabled.",
+    waiting_car_data:"Waiting for a fresh car update to check charging.",
+    meter_unavailable:"Charging check waiting for fresh meter data.",
+    missed_charge:"Lexus reports plugged in, but POWER16 has delivered less than 0.1 kWh after 20 minutes. Check the cable or car timer.",
+    charger_off:"POWER16 is still off after 20 minutes with the Lexus reporting plugged in. Check the charger supply."
+  };
+  const energy = num(check?.energy_kwh, 100);
+  let note = check?.status === "charge_recorded" ? "Overnight charging recorded" + (energy === null ? "." : " · " + energy.toFixed(2) + " kWh.") : checkLabels[check?.status] || "Waiting for the automatic charging check.";
+  const alert = checkFresh && !stale && ["missed_charge", "charger_off"].includes(check?.status);
+  if (!checkFresh || (["missed_charge", "charger_off"].includes(check?.status) && stale)) note = "Charging check waiting for fresh data.";
+  el("lexus-check").hidden = !state;
+  el("lexus-check").dataset.alert = String(alert);
+  el("lexus-check").textContent = note;
+}
+async function loadLexusState(){
+  try {
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.lexus_vehicle&select=value`, {
+      headers:{apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`}, cache:"no-store"
+    });
+    if (!Array.isArray(rows)) throw new Error("Invalid Lexus response");
+    const value = rows.length ? rows[0].value : null;
+    const state = typeof value === "string" ? JSON.parse(value) : value;
+    if (state && (typeof state !== "object" || state.schema !== 1 || !["ok","unavailable","sign_in_required"].includes(state.status))) throw new Error("Unsupported Lexus data");
+    lexusState = state;
+    lexusFetchFailed = false;
+  } catch (_) { lexusFetchFailed = true; }
+  renderLexus();
+}
+// END LEXUS VEHICLE.
 async function loadLiveState(){
   try {
     const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`, { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
@@ -2575,6 +2666,9 @@ async function init(){
   loadBydState();
   setInterval(loadBydState, 60_000);
   setInterval(renderByd, 30_000);               // age cached car readings even if the network fails
+  loadLexusState();
+  setInterval(loadLexusState, 60_000);
+  setInterval(renderLexus, 30_000);
   setupHistoryControls();
   loadHistory();
   setInterval(loadHistory, 10 * 60_000);       // the Pi republishes the day ledger every 10 min
