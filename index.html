@@ -188,6 +188,15 @@
   .charge-cap{display:block;font-size:12px;line-height:1.6;color:var(--text-dim);font-weight:500;margin:12px 0 16px;min-height:39px}
   .automation-label{font-size:13px;color:var(--text-dim)}
   .override-status:empty{display:none}
+  .vehicle-card{margin:0 0 20px;padding:16px;border-radius:14px;background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.25)}
+  .vehicle-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+  .vehicle-head h4{font-size:16px;margin:0}
+  .vehicle-tag{font-size:11px;color:var(--text-dim)}
+  .vehicle-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .vehicle-battery{width:100%;height:7px;accent-color:#60a5fa;margin:12px 0 3px}
+  .vehicle-note{font-size:12px;line-height:1.5;color:var(--text-dim);margin:8px 0 0}
+  .vehicle-card[data-stale="true"] .vehicle-tag{color:#fbbf24}
+  .vehicle-card [hidden]{display:none}
   .charge-section .lc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .charge-section .lc-stats > div:last-child{grid-column:1 / -1}
   .charge-section .lc-val{font-size:24px;white-space:normal;overflow-wrap:anywhere}
@@ -546,6 +555,17 @@
       </div>
       <div id="easee-override-status" class="override-status"></div>
 
+      <section class="vehicle-card" id="byd-card" aria-labelledby="byd-title">
+        <div class="vehicle-head"><h4 id="byd-title">BYD Seal</h4><span class="vehicle-tag" id="byd-tag">Car data</span></div>
+        <div class="vehicle-values" id="byd-values" hidden>
+          <div><div class="metric-label">Battery</div><div class="metric-value"><span id="byd-battery">—</span><span class="unit">%</span></div></div>
+          <div><div class="metric-label">Range</div><div class="metric-value"><span id="byd-range">—</span><span class="unit">miles</span></div></div>
+        </div>
+        <progress class="vehicle-battery" id="byd-meter" max="100" value="0" aria-label="BYD battery percentage" hidden></progress>
+        <p class="vehicle-note" id="byd-status" role="status">Loading car connection…</p>
+        <p class="vehicle-note" id="byd-updated" hidden></p>
+      </section>
+
       <div class="charge-grid">
         <div class="charge-metric">
           <div class="metric-label">Live Power</div>
@@ -823,7 +843,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-21 byd-seal-v8";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-23 byd-telemetry-v9";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1330,6 +1350,65 @@ function fmtDuration(sec){
   if (m > 0) return `${m}m`;
   return `${sec}s`;
 }
+// BYD VEHICLE. Independent of charger readings and controls.
+let bydState = null;
+let bydFetchFailed = false;
+function bydNumber(value, max){
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max ? value : null;
+}
+function renderByd(state = bydState, now = Date.now(), readFailed = bydFetchFailed){
+  const el = id => document.getElementById(id);
+  const battery = bydNumber(state?.battery_pct, 100);
+  const range = bydNumber(state?.range_miles, 1500);
+  const hasData = battery !== null || range !== null;
+  const vehicleAt = Date.parse(state?.vehicle_updated_at || "");
+  const checkedAt = Date.parse(state?.checked_at || "");
+  const validTime = Number.isFinite(vehicleAt) && vehicleAt <= now + 300000;
+  const old = !validTime || now - vehicleAt > 30 * 60000 || !Number.isFinite(checkedAt) || now - checkedAt > 25 * 60000;
+  const stale = hasData && (old || readFailed || state?.status !== "ok");
+  el("byd-card").dataset.stale = String(stale);
+  el("byd-values").hidden = !hasData;
+  el("byd-battery").textContent = battery === null ? "—" : String(Math.round(battery));
+  el("byd-range").textContent = range === null ? "—" : String(Math.round(range));
+  el("byd-meter").hidden = battery === null;
+  el("byd-meter").value = battery ?? 0;
+  el("byd-updated").hidden = !hasData;
+  el("byd-updated").textContent = validTime ? "BYD updated " + new Date(vehicleAt).toLocaleString("en-GB", {
+    timeZone:"Europe/London", weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"
+  }) : "BYD has not supplied an update time.";
+  if ((!state || state.status === "not_connected") && !readFailed){
+    el("byd-tag").textContent = "Not connected";
+    el("byd-status").textContent = "Connect your BYD account using the private setup window on your computer.";
+  } else if (state?.status === "sign_in_required"){
+    el("byd-tag").textContent = hasData ? "Last known" : "Sign-in needed";
+    el("byd-status").textContent = "Reconnect your BYD account using the private setup window.";
+  } else if (!hasData){
+    el("byd-tag").textContent = "Waiting for data";
+    el("byd-status").textContent = readFailed ? "Car data is unavailable. Retrying automatically." : "Connected to BYD. Waiting for the car to send a reading.";
+  } else if (stale){
+    el("byd-tag").textContent = "Last known";
+    el("byd-status").textContent = readFailed || state.status !== "ok" ? "Connection interrupted. Showing the last reading." : "Waiting for a newer reading from the car.";
+  } else {
+    el("byd-tag").textContent = "From BYD";
+    const status = state.charging === true ? "Charging" : state.charging === false ? "Not charging" : "Car data";
+    el("byd-status").textContent = status + " · updates about every 10 minutes";
+  }
+}
+async function loadBydState(){
+  try {
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.byd_vehicle&select=value`, {
+      headers:{apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`}, cache:"no-store"
+    });
+    if (!Array.isArray(rows)) throw new Error("Invalid car data response");
+    const value = rows.length ? rows[0].value : null;
+    const state = typeof value === "string" ? JSON.parse(value) : value;
+    if (state && (typeof state !== "object" || state.schema !== 1 || !["not_connected","ok","unavailable","sign_in_required"].includes(state.status))) throw new Error("Unsupported car data");
+    bydState = state;
+    bydFetchFailed = false;
+  } catch (_) { bydFetchFailed = true; }
+  renderByd();
+}
+// END BYD VEHICLE.
 async function loadLiveState(){
   try {
     const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.live_state&select=value`, { headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}` }, cache:"no-store" });
@@ -2490,6 +2569,9 @@ async function init(){
   initWheels();
   await loadSchedules();
   loadLiveState();                             // tariff AND device state both come from live_state
+  loadBydState();
+  setInterval(loadBydState, 60_000);
+  setInterval(renderByd, 30_000);               // age cached car readings even if the network fails
   setupHistoryControls();
   loadHistory();
   setInterval(loadHistory, 10 * 60_000);       // the Pi republishes the day ledger every 10 min
