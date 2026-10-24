@@ -92,6 +92,16 @@
   .free-icon{font-size:40px}
   .free-title{font-size:22px;font-weight:800;letter-spacing:0.1em}
   .free-time{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .perks-card{margin:0 0 24px;padding:24px;border-radius:22px;border:1px solid rgba(30,229,96,.4);background:linear-gradient(120deg,#102b26,#101c32)}
+  .perks-card h2{font-size:24px;line-height:1.25;margin:8px 0 12px}
+  .perks-label{color:var(--green);font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+  .perks-card p{font-size:14px;line-height:1.5;margin:8px 0;color:var(--text-dim)}
+  .perks-card .perks-time{font-size:17px;color:var(--text);font-weight:650}
+  .perks-credit{font-size:30px;font-weight:800;margin-top:18px}
+  .perks-card details{margin-top:14px;font-size:13px;color:var(--text-dim)}
+  .perks-card summary{cursor:pointer}
+  .perks-card a{color:var(--cyan)}
+  .perks-row{display:flex;justify-content:space-between;gap:14px;margin:12px 0;flex-wrap:wrap}
 
   /* SECTION HEADINGS */
   .section-heading{font-size:14px;letter-spacing:0.28em;color:var(--text-dim);
@@ -487,6 +497,10 @@
     .header{flex-direction:column;align-items:flex-start;gap:8px}
     .clock{text-align:left}
   }
+  @media (max-width:420px){
+    .now-price{font-size:64px;white-space:nowrap}
+    .now-price .unit{font-size:20px}
+  }
 </style>
 </head>
 <body>
@@ -499,6 +513,7 @@
 
   <!-- Free electricity banner moved ABOVE the hero card so the headline is the first thing on screen -->
   <div id="free-electricity"></div>
+  <div id="power-perks"></div>
 
   <section id="now-card" class="now-card green">
     <div class="now-grid">
@@ -808,6 +823,7 @@
       </div>
     </div>
     <p class="hist-boundary"><b>Calendar days · midnight to midnight, UK time.</b> <span id="hist-day-definition">A charge spanning midnight appears on two dates here; the charger cards above show the whole charge.</span></p>
+    <p class="hist-note" id="hist-perks-note" hidden></p>
     <div class="hist-browse">
       <div class="hist-pager">
         <button type="button" id="hist-prev" aria-label="Previous week">← Earlier</button>
@@ -859,7 +875,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-23 lexus-telemetry-v11";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-24 power-perks-v12";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -985,7 +1001,65 @@ function fmtAge(mins){
   return h + "h " + String(m).padStart(2,"0") + "m";
 }
 
+// POWER PERKS. An account-specific credit, separate from the gross tariff ledger.
+let currentPowerPerks = null;
+function powerPerksEvents(){
+  if (currentPowerPerks?.schema !== 1 || currentPowerPerks.status !== "ok") return [];
+  return (currentPowerPerks.events || []).filter(e => Number.isFinite(Date.parse(e.start)) &&
+    Number.isFinite(Date.parse(e.end)) && Date.parse(e.end) > Date.parse(e.start));
+}
+function powerPerksActive(now = Date.now()){
+  return powerPerksEvents().find(e => Date.parse(e.start) <= now && now < Date.parse(e.end));
+}
+function powerPerksSessionNote(s, now = Date.now()){
+  if (!s) return "";
+  const a = Date.parse(s.window_start || s.started), b = s.active || s.charging ? now : Date.parse(s.window_end || s.ended || s.last_charging_at);
+  return powerPerksEvents().some(e => a < Date.parse(e.end) && b > Date.parse(e.start))
+    ? "Before Power Perks credit; see the reward card above." : "";
+}
+function renderPowerPerks(now = Date.now()){
+  const root = document.getElementById("power-perks");
+  const events = powerPerksEvents();
+  const money = p => "£" + (p / 100).toFixed(2);
+  const stamp = iso => new Date(iso).toLocaleString("en-GB", {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Europe/London",timeZoneName:"short"});
+  root.innerHTML = events.map(e => {
+    const upcoming = now < Date.parse(e.start), active = !upcoming && now < Date.parse(e.end);
+    const month = /^\d{4}-\d{2}$/.test(e.credit_expected_month || "")
+      ? new Date(e.credit_expected_month + "-01T12:00:00Z").toLocaleDateString("en-GB",{month:"long",timeZone:"Europe/London"}) : "the following month";
+    const deviceNames = {easee:"Easee One",breaker:"POWER16",immersion:"Immersion"};
+    let total = 0, hasReadings = false;
+    const rows = Object.entries(deviceNames).map(([key,name]) => {
+      const d = e.devices?.[key];
+      const known = d?.status === "recorded" && Number.isFinite(d.expected_credit_p) && d.expected_credit_p >= 0;
+      const hasPrice = known && Number.isFinite(d.priced_kwh) && (d.priced_kwh > 0 || d.recorded_kwh === 0);
+      if (hasPrice){total += d.expected_credit_p; hasReadings = true;}
+      const pending = d?.unpriced_kwh > .00001 || d?.boundary_kwh > .00001;
+      const energy = Number.isFinite(d?.priced_kwh) ? d.priced_kwh.toFixed(2) : "—";
+      const value = hasPrice ? `≈${money(d.expected_credit_p)} · ${energy} kWh${pending ? " · partial" : ""}`
+        : d?.status === "unavailable" ? "Readings unavailable" : pending ? "Waiting for timed readings" : "Waiting for readings";
+      return `<div class="perks-row"><span>${name}</span><span>${value}</span></div>`;
+    }).join("");
+    const hours = (Date.parse(e.end)-Date.parse(e.start))/3600000;
+    return `<section class="perks-card"><div class="perks-label">EDF Power Perks${active ? " · active now" : upcoming ? " · confirmed by SMS" : " · event ended"}</div>` +
+      `<h2>${upcoming ? "Free electricity after credit" : active ? "0p/kWh after credit" : "Your expected electricity credit"}</h2>` +
+      `<p class="perks-time">${stamp(e.start)} → ${stamp(e.end)}</p><p>${hours} hours · UK time. Credit expected in ${month}.</p>` +
+      (upcoming ? '<p>Both cars’ 23:00–06:00 window and the heater’s 03:00–06:00 window fall within this event.</p>'
+        : `<div class="perks-credit">${hasReadings ? "≈" + money(total) : "Awaiting readings"}</div><p>Expected credit on recorded device use</p>`) +
+      '<details><summary>How the credit works</summary>' + (!upcoming ? rows : "") +
+      '<p>The charger and history costs show the original tariff cost. This card estimates the separate credit for recorded device use; EDF also credits qualifying use elsewhere in the home. Standing charges remain separate.</p>' +
+      '<p>Readings can arrive late. Energy that crosses an event or rate boundary without enough timing detail is left out of the credit estimate.</p>' +
+      '<p>EDF calculates the final credit from its smart-meter readings. <a href="https://www.edfenergy.com/power-perks-terms-and-conditions" target="_blank" rel="noopener">EDF terms</a></p>' +
+      (Number.isFinite(Date.parse(currentPowerPerks.updated_at)) ? `<p>Calculation updated ${stamp(currentPowerPerks.updated_at)}.</p>` : "") + '</details></section>';
+  }).join("");
+  if (currentPowerPerks?.status === "unavailable") root.textContent = "Power Perks records are temporarily unavailable.";
+  const note = document.getElementById("hist-perks-note");
+  note.hidden = !events.length;
+  note.textContent = "History shows tariff costs before Power Perks credits. The separate reward estimate is shown above.";
+}
+// END POWER PERKS.
+
 function renderTariff(t){
+  renderPowerPerks();
   const card = document.getElementById("now-card");
   const pill = document.getElementById("charging-pill");
   if (!t){
@@ -1015,13 +1089,14 @@ function renderTariff(t){
     return;
   }
 
+  const rewardActive = !!powerPerksActive();
   const isFree = (period === "free");
   const isOff  = (period === "offpeak");
-  card.className = "now-card " + ((isFree || isOff) ? "green" : "red");
+  card.className = "now-card " + ((isFree || isOff || rewardActive) ? "green" : "red");
   document.getElementById("now-band-name").textContent =
-    isFree ? "FREE" : (isOff ? "OFF-PEAK" : (period === "peak" ? "PEAK" : "\u2014"));
+    rewardActive ? "FREE AFTER CREDIT" : isFree ? "FREE" : (isOff ? "OFF-PEAK" : (period === "peak" ? "PEAK" : "\u2014"));
   document.getElementById("now-price").textContent =
-    (t.price_p != null) ? Number(t.price_p).toFixed(2) : "\u2014";
+    rewardActive ? "0.00" : (t.price_p != null) ? Number(t.price_p).toFixed(2) : "\u2014";
 
   // The Pi tells us when it is running on the clock because EDF's feed is unreachable. Say
   // so rather than presenting a contracted rate as a measured one.
@@ -1032,7 +1107,9 @@ function renderTariff(t){
   const startH = String(t.offpeak_start_hour == null ? 23 : t.offpeak_start_hour).padStart(2,"0");
   const endH   = String(t.offpeak_end_hour   == null ? 6  : t.offpeak_end_hour  ).padStart(2,"0");
 
-  document.getElementById("now-context").innerHTML = isFree
+  document.getElementById("now-context").innerHTML = rewardActive
+    ? `Power Perks · published ${Number(t.price_p).toFixed(2)}p/kWh credited later`
+    : isFree
     ? '<span class="delta below">Free electricity \u2014 everything is charging</span>'
     : (isOff
         ? '<span class="delta below">Off-peak window ' + startH + ':00\u2013' + endH + ':00</span>'
@@ -1057,6 +1134,7 @@ function renderTariff(t){
     pill.className = "charging-pill off";
     pill.textContent = "Holding until " + startH + ":00";
   }
+  if (rewardActive){ pill.className = "charging-pill on"; pill.textContent = "Power Perks active"; }
 
   rateCard("rate-offpeak",  "green", "OFF-PEAK", t.offpeak_price_p, startH + ":00 \u2013 " + endH + ":00 every night");
   rateCard("rate-peak",     "red",   "PEAK",     t.peak_price_p,    endH + ":00 \u2013 " + startH + ":00");
@@ -1522,6 +1600,7 @@ async function loadLiveState(){
       staleSince = (ageMin0 >= 3) ? ageMin0 : 0;
     }
     currentTariff = state.tariff || null;
+    currentPowerPerks = state.power_perks || null;
     renderTariff(currentTariff);
     renderHistoryBoundary();
 
@@ -1832,7 +1911,9 @@ function renderChargeCost(key, cs, reporting){
     note = rates.map(r => `${r.kwh.toFixed(2)} kWh × ${fmtRateP(r.price_p)}/kWh`).join(" + ");
     note += (note ? ". " : "") + "Calculated using the published tariff for this charge.";
   }
-  $("cost-note").textContent = note;
+  const rewardNote = powerPerksSessionNote({...s, active});
+  if (rewardNote) $("cost-label").textContent += " · before credit";
+  $("cost-note").textContent = [rewardNote, note].filter(Boolean).join(" ");
 }
 
 // ------------------------------------------------------------------
@@ -2429,6 +2510,8 @@ function renderImmersionUsage(usage){
       bits.push(`Possible cost: ${fmtChargeMoney(s.cost_low_p)}–${fmtChargeMoney(s.cost_high_p)}.`);
   }
   if (s.element_last_at && !s.active) bits.push(`Last heating was recorded at ${tm(s.element_last_at)}.`);
+  const rewardNote = powerPerksSessionNote(s);
+  if (rewardNote){ $("cost-label").textContent += " · before credit"; bits.unshift(rewardNote); }
   $("usage-note").textContent = bits.join(" ");
 }
 

@@ -12,6 +12,7 @@ const el = id => {
 const ctx = vm.createContext({console, Intl, Date, JSON, Number, Math, Object, Array,
   localStorage: {getItem: () => null},
   document: {getElementById: el, createElement: () => ({children:[], appendChild(x){this.children.push(x)}})}});
+vm.runInContext(slice('// POWER PERKS.', '// END POWER PERKS.'), ctx);
 vm.runInContext(slice('const HIST_SERIES =', 'function renderHistoryBoundary'), ctx);
 vm.runInContext(slice('function applyHistoryCorrections', 'function buildPeriods'), ctx);
 vm.runInContext(slice('function fmtPence', '// ENERGY HISTORY.'), ctx);
