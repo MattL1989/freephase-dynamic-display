@@ -538,6 +538,37 @@
     </form>
     <p id="perks-save-status" class="perks-help" role="status" aria-live="polite"></p>
   </details>
+  <details class="perks-controls" id="perks-forwarding">
+    <summary>Automatically forward EDF texts</summary>
+    <p class="perks-help">Set this up once in iPhone Shortcuts. Future dated Power Perks offers will reach the Pi over Wi-Fi or mobile data. Both chargers follow the event in Auto; manual OFF and the heater’s 3½-hour limit still apply.</p>
+    <p id="perks-forward-status" class="perks-help" role="status" aria-live="polite">Checking forwarding setup…</p>
+    <button type="button" class="perks-button" id="perks-forward-create">Create forwarding key · PIN required</button>
+    <button type="button" class="perks-button" id="perks-forward-revoke">Disable forwarding · PIN required</button>
+    <div id="perks-forward-secret" hidden>
+      <label for="perks-forward-key">Your forwarding key · copy into Shortcuts</label>
+      <input id="perks-forward-key" type="password" readonly autocomplete="off">
+      <button type="button" class="perks-button" id="perks-forward-copy-key">Copy key</button>
+      <p class="perks-help">This key is shown only in this tab. Keep it private. Creating another key replaces the old one.</p>
+    </div>
+    <label for="perks-forward-url">URL for Shortcuts</label>
+    <input id="perks-forward-url" type="url" readonly>
+    <button type="button" class="perks-button" id="perks-forward-copy-url">Copy URL</button>
+    <p id="perks-forward-feedback" class="perks-help" role="status" aria-live="polite"></p>
+    <details class="perks-help"><summary>iPhone setup steps</summary>
+      <ol>
+        <li>Create a forwarding key above using your dashboard PIN.</li>
+        <li>In <strong>Shortcuts</strong>, create a <strong>Message</strong> automation with <strong>Message Contains: Power Perks</strong>. Select EDFINFO as the sender too if your phone offers it.</li>
+        <li>Choose <strong>Run Immediately</strong> (or turn off <strong>Confirm Before Run</strong>). On newer iOS versions, use the shortcut’s <strong>Edit → Automation</strong> menu; enable <strong>Privacy → Allow Running When Locked</strong>.</li>
+        <li>Add <strong>Get Contents of URL</strong>. Paste the URL above, choose <strong>POST</strong>, then <strong>Request Body: JSON</strong>.</li>
+        <li>Add two Text fields: <strong>key</strong> = your copied key; <strong>message</strong> = <strong>Shortcut Input</strong>, choosing its <strong>Message</strong> text property. Do not type the words “Shortcut Input”.</li>
+        <li>Add <strong>Get Dictionary Value</strong> for <strong>message</strong> from the URL result, then <strong>Show Notification</strong> with that value. This reports saved hours or a message needing review.</li>
+        <li>For a connection test, temporarily put <strong>TEST</strong> in the request’s message field and run it. Expect “Freephase connection works”. Then change it back to the received message variable and save.</li>
+      </ol>
+      <p>The test does not change charging hours. An incoming SMS is still needed to verify your phone’s trigger. Keep the notification action so a message needing review is visible.</p>
+      <p>Automatic entry needs one explicit calendar date and one time window in EDF’s message. Relative-only dates, changed offers and unclear cancellations need review in the dashboard. Full texts are processed but not retained; the dashboard shows only the result and event times.</p>
+      <p><a href="https://support.apple.com/guide/shortcuts/communication-triggers-apdd711f9dff/ios" target="_blank" rel="noopener">Apple’s Message trigger guide</a> · <a href="https://support.apple.com/guide/shortcuts/apd58d46713f/ios" target="_blank" rel="noopener">Sending a request from Shortcuts</a></p>
+    </details>
+  </details>
 
   <section id="now-card" class="now-card green">
     <div class="now-grid">
@@ -899,7 +930,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-24 power-perks-control-v13";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-24 power-perks-sms-v14";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1197,6 +1228,66 @@ function confirmPerksSave(){
   }
 }
 // END POWER PERKS INPUT.
+
+// POWER PERKS FORWARDING. The key is held in this tab only, never localStorage.
+let perksForwarding = null;
+async function configurePerksForwarding(token){
+  if(!(await ensurePin())) return {ok:false,reason:'cancelled'};
+  const args=()=>({p_pin:controlPin,p_token:token});
+  let r=await rpc('configure_power_perks_forwarding',args());
+  if(r.value==='bad_pin'){
+    forgetPin(); if(!(await ensurePin())) return {ok:false,reason:'cancelled'};
+    r=await rpc('configure_power_perks_forwarding',args());
+  }
+  return r.ok && r.value==='ok' ? {ok:true} : {ok:false,reason:r.value||'connection'};
+}
+function renderPerksForwarding(){
+  const e=document.getElementById('perks-forward-status'), f=perksForwarding;
+  if(!f){e.textContent='Could not check forwarding. Please refresh before setting it up.';return;}
+  let message=f.enabled?'Forwarding key enabled. Your iPhone automation must also be set up.':'Forwarding is disabled.';
+  if(f.received_at){
+    const when=new Date(f.received_at).toLocaleString('en-GB',{timeZone:'Europe/London',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    let result=f.message||f.status;
+    const a=currentPowerPerks?.automation;
+    if(['saved','cancelled'].includes(f.status) && a?.sync_ok && Date.parse(a.last_sync_at)>=Date.parse(f.received_at)){
+      const present=powerPerksEvents().some(ev=>Date.parse(ev.start)===Date.parse(f.start)&&Date.parse(ev.end)===Date.parse(f.end));
+      if(present===(f.status==='saved')) result=f.status==='saved'?'Pi confirmed these free hours.':'Pi confirmed the cancellation.';
+    }
+    message+=` Last text · ${when}: ${result}`;
+  }
+  e.textContent=message;
+  document.getElementById('perks-forward-create').textContent=f.enabled?'Replace forwarding key · PIN required':'Create forwarding key · PIN required';
+}
+async function loadPerksForwarding(){
+  const rows=await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.power_perks_forwarding&select=value`,{
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`},cache:'no-store'});
+  try {perksForwarding=rows?.length?JSON.parse(rows[0].value):null;} catch {perksForwarding=null;}
+  renderPerksForwarding();
+}
+function setupPerksForwarding(){
+  const el=id=>document.getElementById(id), feedback=el('perks-forward-feedback');
+  el('perks-forward-url').value=SUPABASE_URL+'/functions/v1/edf-power-perks';
+  const change=async(revoke)=>{
+    const button=el(revoke?'perks-forward-revoke':'perks-forward-create');button.disabled=true;
+    try {
+      const token=revoke?null:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
+      const result=await configurePerksForwarding(token);
+      if(!result.ok){feedback.textContent=perksSaveError(result.reason);return;}
+      el('perks-forward-key').value=token||'';el('perks-forward-secret').hidden=revoke;
+      feedback.textContent=revoke?'Forwarding disabled. Saved events remain scheduled; cancel them separately if needed.':'Key created. Copy it into Shortcuts, then follow the setup steps.';
+      await loadPerksForwarding();
+    } catch {feedback.textContent='Could not update forwarding. Please try again.';}
+    finally {button.disabled=false;}
+  };
+  el('perks-forward-create').onclick=()=>change(false);el('perks-forward-revoke').onclick=()=>change(true);
+  for(const name of ['key','url']) el('perks-forward-copy-'+name).onclick=async()=>{
+    try {await navigator.clipboard.writeText(el('perks-forward-'+name).value);feedback.textContent=name==='key'?'Key copied. Paste it into the key field in Shortcuts.':'URL copied.';}
+    catch {el('perks-forward-'+name).focus();el('perks-forward-'+name).select();feedback.textContent='Select and copy this field.';}
+  };
+  loadPerksForwarding();
+  setInterval(loadPerksForwarding,30000);
+}
+// END POWER PERKS FORWARDING.
 
 function renderTariff(t){
   renderPowerPerks();
@@ -2885,6 +2976,7 @@ async function init(){
   setInterval(ageTick, 30_000);
   await loadOverrides();
   setupPerksControls();
+  setupPerksForwarding();
   initWheels();
   await loadSchedules();
   loadLiveState();                             // tariff AND device state both come from live_state
