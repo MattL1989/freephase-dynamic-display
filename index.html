@@ -102,6 +102,15 @@
   .perks-card summary{cursor:pointer}
   .perks-card a{color:var(--cyan)}
   .perks-row{display:flex;justify-content:space-between;gap:14px;margin:12px 0;flex-wrap:wrap}
+  .perks-controls{margin:0 0 24px;padding:18px 24px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}
+  .perks-controls summary{cursor:pointer;font-weight:700}
+  .perks-controls label{display:block;margin:14px 0 6px;font-size:14px;color:var(--text-dim)}
+  .perks-controls input,.perks-controls textarea{width:100%;max-width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);font:inherit;font-size:16px}
+  .perks-controls textarea{min-height:100px;resize:vertical}
+  .perks-times{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .perks-button{margin-top:14px;border:1px solid var(--border);border-radius:10px;padding:10px 14px;background:var(--surface-2);color:var(--text);font:inherit;cursor:pointer}
+  .perks-button:disabled{opacity:.5;cursor:wait}
+  .perks-help{font-size:13px;line-height:1.5;color:var(--text-dim);margin:12px 0 0}
 
   /* SECTION HEADINGS */
   .section-heading{font-size:14px;letter-spacing:0.28em;color:var(--text-dim);
@@ -514,6 +523,21 @@
   <!-- Free electricity banner moved ABOVE the hero card so the headline is the first thing on screen -->
   <div id="free-electricity"></div>
   <div id="power-perks"></div>
+  <details class="perks-controls" id="perks-controls">
+    <summary>Add EDF free hours</summary>
+    <p class="perks-help">Add the offer sent to your EDF account. The Pi will enable both chargers and the heater during the event, then return to normal. Manual OFF still wins; the heater keeps its 3½-hour safety limit.</p>
+    <label for="perks-sms">Paste EDF text (optional)</label>
+    <textarea id="perks-sms" placeholder="Paste the Power Perks message here"></textarea>
+    <button type="button" class="perks-button" id="perks-read-sms">Read times from text</button>
+    <form id="perks-form">
+      <label for="perks-date">Starting date · UK time</label><input type="date" id="perks-date" required>
+      <div class="perks-times"><div><label for="perks-start">From</label><input type="time" id="perks-start" value="23:00" required></div>
+      <div><label for="perks-end">Until</label><input type="time" id="perks-end" value="06:00" required></div></div>
+      <p id="perks-preview" class="perks-help">An end time earlier than the start means the following day.</p>
+      <button type="submit" class="perks-button" id="perks-save">Save free hours · PIN required</button>
+    </form>
+    <p id="perks-save-status" class="perks-help" role="status" aria-live="polite"></p>
+  </details>
 
   <section id="now-card" class="now-card green">
     <div class="now-grid">
@@ -763,7 +787,7 @@
           <span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3s-7 8-7 12a7 7 0 0 0 14 0c0-4-7-12-7-12Z"/><path d="M8 15a4 4 0 0 0 4 4"/></svg></span>
           <div><div class="device-kind">Hot water</div><h3 class="charge-section-title" id="immersion-title">Immersion Heater</h3></div>
         </div>
-        <p class="charge-cap" id="imm-cap">auto-on 03:00–06:00 &amp; free (0p) hours · 4h max runtime</p>
+        <p class="charge-cap" id="imm-cap">auto-on 03:00–06:00 &amp; confirmed free hours · 3.5h max runtime</p>
         <div class="section-controls">
           <div id="immersion-mode" class="charge-mode-pill disconnected">—</div>
           <span class="automation-label">Automatic heating</span>
@@ -787,7 +811,7 @@
         </div>
         <div class="charge-metric">
           <div class="metric-label">Auto rule</div>
-          <div class="metric-value" style="font-size:22px" id="imm-rule">03–06 + 0p</div>
+          <div class="metric-value" style="font-size:22px" id="imm-rule">03–06 + free</div>
           <div class="metric-sub">hot-water window and free hours</div>
         </div>
       </div>
@@ -875,7 +899,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-24 power-perks-v12";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-10-24 power-perks-control-v13";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1005,7 +1029,7 @@ function fmtAge(mins){
 let currentPowerPerks = null;
 function powerPerksEvents(){
   if (currentPowerPerks?.schema !== 1 || currentPowerPerks.status !== "ok") return [];
-  return (currentPowerPerks.events || []).filter(e => Number.isFinite(Date.parse(e.start)) &&
+  return (currentPowerPerks.events || []).filter(e => !e.cancelled && Number.isFinite(Date.parse(e.start)) &&
     Number.isFinite(Date.parse(e.end)) && Date.parse(e.end) > Date.parse(e.start));
 }
 function powerPerksActive(now = Date.now()){
@@ -1022,7 +1046,7 @@ function renderPowerPerks(now = Date.now()){
   const events = powerPerksEvents();
   const money = p => "£" + (p / 100).toFixed(2);
   const stamp = iso => new Date(iso).toLocaleString("en-GB", {weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Europe/London",timeZoneName:"short"});
-  root.innerHTML = events.map(e => {
+  root.innerHTML = events.map((e,index) => {
     const upcoming = now < Date.parse(e.start), active = !upcoming && now < Date.parse(e.end);
     const month = /^\d{4}-\d{2}$/.test(e.credit_expected_month || "")
       ? new Date(e.credit_expected_month + "-01T12:00:00Z").toLocaleDateString("en-GB",{month:"long",timeZone:"Europe/London"}) : "the following month";
@@ -1043,13 +1067,15 @@ function renderPowerPerks(now = Date.now()){
     return `<section class="perks-card"><div class="perks-label">EDF Power Perks${active ? " · active now" : upcoming ? " · confirmed by SMS" : " · event ended"}</div>` +
       `<h2>${upcoming ? "Free electricity after credit" : active ? "0p/kWh after credit" : "Your expected electricity credit"}</h2>` +
       `<p class="perks-time">${stamp(e.start)} → ${stamp(e.end)}</p><p>${hours} hours · UK time. Credit expected in ${month}.</p>` +
-      (upcoming ? '<p>Both cars’ 23:00–06:00 window and the heater’s 03:00–06:00 window fall within this event.</p>'
+      (upcoming ? `<p>${currentPowerPerks.automation?.enabled ? 'Pi will enable both chargers and the heater during these hours.' : 'Waiting for the Pi to confirm automatic control.'}</p>`
         : `<div class="perks-credit">${hasReadings ? "≈" + money(total) : "Awaiting readings"}</div><p>Expected credit on recorded device use</p>`) +
+      ((upcoming || active) ? '<p>Manual OFF still wins. Heater maximum: 3½ hours; the thermostat controls heat demand.</p>' : '') +
       '<details><summary>How the credit works</summary>' + (!upcoming ? rows : "") +
       '<p>The charger and history costs show the original tariff cost. This card estimates the separate credit for recorded device use; EDF also credits qualifying use elsewhere in the home. Standing charges remain separate.</p>' +
       '<p>Readings can arrive late. Energy that crosses an event or rate boundary without enough timing detail is left out of the credit estimate.</p>' +
       '<p>EDF calculates the final credit from its smart-meter readings. <a href="https://www.edfenergy.com/power-perks-terms-and-conditions" target="_blank" rel="noopener">EDF terms</a></p>' +
-      (Number.isFinite(Date.parse(currentPowerPerks.updated_at)) ? `<p>Calculation updated ${stamp(currentPowerPerks.updated_at)}.</p>` : "") + '</details></section>';
+      (Number.isFinite(Date.parse(currentPowerPerks.updated_at)) ? `<p>Calculation updated ${stamp(currentPowerPerks.updated_at)}.</p>` : "") +
+      ((upcoming || active) ? `<button class="perks-button" type="button" data-perks-cancel="${index}">Cancel this event</button>` : '') + '</details></section>';
   }).join("");
   if (currentPowerPerks?.status === "unavailable") root.textContent = "Power Perks records are temporarily unavailable.";
   const note = document.getElementById("hist-perks-note");
@@ -1057,6 +1083,120 @@ function renderPowerPerks(now = Date.now()){
   note.textContent = "History shows tariff costs before Power Perks credits. The separate reward estimate is shown above.";
 }
 // END POWER PERKS.
+
+// POWER PERKS INPUT. Parse locally; only dates/times are saved, never the SMS body.
+function perksUKDate(now = Date.now()){
+  return new Date(now).toLocaleDateString('en-CA',{timeZone:'Europe/London'});
+}
+function perksNextDate(date, days = 1){
+  const d = new Date(date+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+days);
+  return d.toISOString().slice(0,10);
+}
+function perksUKInstant(date, time){
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Choose a valid date and time.');
+  const wall = date+'T'+time, base = Date.parse(wall+':00Z');
+  const formatter = new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+  const candidates = [base,base-3600000].filter(t => {
+    if (!Number.isFinite(t)) return false;
+    const p = Object.fromEntries(formatter.formatToParts(t).map(x=>[x.type,x.value]));
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}` === wall;
+  });
+  if (candidates.length !== 1) throw new Error('That time is ambiguous or missing during the clock change. Check the exact EDF time before saving.');
+  return new Date(candidates[0]).toISOString();
+}
+function perksWindow(date, start, end){
+  return {start:perksUKInstant(date,start),end:perksUKInstant(end<=start ? perksNextDate(date) : date,end)};
+}
+function parsePerksSMS(text, now = Date.now()){
+  if (!/power\s+perks/i.test(text) || !/free electricity/i.test(text) || /cancel|withdraw|no longer|couldn't|could not/i.test(text))
+    throw new Error('This does not look like a confirmed Power Perks offer. Enter the confirmed times below.');
+  const matches = [...text.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/gi)];
+  if (matches.length !== 2) throw new Error('Please enter each confirmed time window separately below.');
+  const clock = m => {
+    let h=Number(m[1]), minute=Number(m[2]||0);
+    if(h<1 || h>12 || minute>59) throw new Error('The text contains an invalid time.');
+    h=h%12+(m[3].toLowerCase()==='pm'?12:0);
+    return String(h).padStart(2,'0')+':'+String(minute).padStart(2,'0');
+  };
+  const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const found=text.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+(20\d{2}))?\b/i);
+  const today=perksUKDate(now);
+  let date;
+  if(found){
+    const year=Number(today.slice(0,4)), month=String(months.indexOf(found[2].toLowerCase())+1).padStart(2,'0'), day=String(Number(found[1])).padStart(2,'0');
+    const candidates=(found[3]?[Number(found[3])]:[year-1,year,year+1]).map(y=>`${y}-${month}-${day}`);
+    date=candidates.sort((a,b)=>Math.abs(Date.parse(a+'T12:00:00Z')-now)-Math.abs(Date.parse(b+'T12:00:00Z')-now))[0];
+  } else if(/\btomorrow\b/i.test(text)) date=perksNextDate(today);
+  else if(/\btonight\b|\btoday\b/i.test(text)) date=today;
+  else throw new Error('The date is unclear. Enter the confirmed date below.');
+  const start=clock(matches[0]),end=clock(matches[1]); perksWindow(date,start,end);
+  return {date,start,end};
+}
+let pendingPerksSave = null;
+async function savePerksWindow(window, cancel = false){
+  if (!(await ensurePin())) return {ok:false,reason:'cancelled'};
+  const args=()=>({p_pin:controlPin,p_start:window.start,p_end:window.end,p_cancel:cancel});
+  let r=await rpc('set_power_perks_event',args());
+  if(r.value==='bad_pin'){
+    forgetPin(); if(!(await ensurePin())) return {ok:false,reason:'cancelled'};
+    r=await rpc('set_power_perks_event',args());
+  }
+  return r.ok && r.value==='ok' ? {ok:true} : {ok:false,reason:typeof r.value==='string'?r.value:'connection'};
+}
+function perksSaveError(reason){
+  return ({bad_window:'Check the times: an event must last no more than 25 hours.',bad_date:'Choose a current or upcoming EDF offer within the next seven days.',overlap:'These hours overlap an existing event. Cancel that event before replacing it.',connection:'Could not reach the server. Please try again.'})[reason] || reasonText(reason);
+}
+function setupPerksControls(){
+  const el=id=>document.getElementById(id), status=el('perks-save-status');
+  el('perks-date').value=perksUKDate();
+  const preview=()=>{
+    try {
+      const w=perksWindow(el('perks-date').value,el('perks-start').value,el('perks-end').value);
+      const fmt=t=>new Date(t).toLocaleString('en-GB',{timeZone:'Europe/London',weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+      el('perks-preview').textContent=`Check against EDF’s text: ${fmt(w.start)} → ${fmt(w.end)}.`;
+    } catch(e){el('perks-preview').textContent=e.message;}
+  };
+  for(const id of ['perks-date','perks-start','perks-end']) el(id).addEventListener('input',preview);
+  preview();
+  el('perks-read-sms').onclick=()=>{
+    try {
+      const p=parsePerksSMS(el('perks-sms').value);
+      for(const name of ['date','start','end']) el('perks-'+name).value=p[name];
+      preview(); status.textContent='Times filled in. Check them against EDF’s text, then save.';
+    } catch(e){status.textContent=e.message;}
+  };
+  const submit=async(w,cancel,button)=>{
+    button.disabled=true; status.textContent='Saving…';
+    try {
+      const since=Date.now(), result=await savePerksWindow(w,cancel);
+      if(!result.ok){status.textContent=perksSaveError(result.reason);return;}
+      pendingPerksSave={...w,cancel,since};
+      status.textContent=cancel?'Cancellation saved. Waiting for the Pi to confirm.':'Saved. Waiting for the Pi to load these free hours.';
+      el('perks-sms').value='';
+      await loadLiveState();
+    } finally {button.disabled=false;}
+  };
+  el('perks-form').onsubmit=async(e)=>{
+    e.preventDefault();
+    try { await submit(perksWindow(el('perks-date').value,el('perks-start').value,el('perks-end').value),false,el('perks-save')); }
+    catch(err){status.textContent=err.message;}
+  };
+  el('power-perks').onclick=async(e)=>{
+    const button=e.target.closest('button[data-perks-cancel]'); if(!button) return;
+    const event=powerPerksEvents()[Number(button.dataset.perksCancel)]; if(!event) return;
+    el('perks-controls').open=true;
+    try { await submit(event,true,button); } catch(err){status.textContent=err.message;}
+  };
+}
+function confirmPerksSave(){
+  if(!pendingPerksSave || !currentPowerPerks?.automation?.sync_ok || Date.parse(currentPowerPerks.automation.last_sync_at)<pendingPerksSave.since) return;
+  const present=powerPerksEvents().some(e=>Date.parse(e.start)===Date.parse(pendingPerksSave.start) && Date.parse(e.end)===Date.parse(pendingPerksSave.end));
+  if(present===!pendingPerksSave.cancel){
+    document.getElementById('perks-save-status').textContent=pendingPerksSave.cancel?'Pi confirmed: this event is cancelled.':'Pi confirmed: these free hours are scheduled.';
+    pendingPerksSave=null;
+  }
+}
+// END POWER PERKS INPUT.
 
 function renderTariff(t){
   renderPowerPerks();
@@ -1601,6 +1741,7 @@ async function loadLiveState(){
     }
     currentTariff = state.tariff || null;
     currentPowerPerks = state.power_perks || null;
+    confirmPerksSave();
     renderTariff(currentTariff);
     renderHistoryBoundary();
 
@@ -1759,8 +1900,8 @@ async function loadLiveState(){
       const maxRaw = (imm.max_runtime_s != null) ? (imm.max_runtime_s / 3600) : null;
       const maxH = (maxRaw == null) ? null
                  : (Number.isInteger(maxRaw) ? String(maxRaw) : maxRaw.toFixed(1));
-      if (cap) cap.textContent = `auto-on ${a}:00–${b}:00 & free (0p) hours` + (maxH ? ` · ${maxH}h max runtime` : "");
-      if (rule) rule.textContent = `${a}–${b} + 0p`;
+      if (cap) cap.textContent = `auto-on ${a}:00–${b}:00 & confirmed free hours` + (maxH ? ` · ${maxH}h max runtime` : "");
+      if (rule) rule.textContent = `${a}–${b} + free`;
     }
 
   } catch(e){ console.error("live state fetch failed", e); }
@@ -2743,6 +2884,7 @@ async function init(){
   });
   setInterval(ageTick, 30_000);
   await loadOverrides();
+  setupPerksControls();
   initWheels();
   await loadSchedules();
   loadLiveState();                             // tariff AND device state both come from live_state
