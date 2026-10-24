@@ -7,9 +7,10 @@ const el = id => {
   if (!elements.has(id)) elements.set(id,{hidden:false,textContent:'',innerHTML:''});
   return elements.get(id);
 };
-const ctx = vm.createContext({Date,Number,JSON,Array,Object,String,document:{getElementById:el}});
+const ctx = vm.createContext({Date,Number,JSON,Array,Object,String,Intl,document:{getElementById:el}});
 const run = code => vm.runInContext(code,ctx);
 run(html.slice(html.indexOf('// POWER PERKS.'),html.indexOf('// END POWER PERKS.')));
+run(html.slice(html.indexOf('// POWER PERKS INPUT.'),html.indexOf('// END POWER PERKS INPUT.')));
 ctx.event = {id:'fixture',start:'2026-10-24T23:00:00+01:00',end:'2026-10-25T06:00:00+00:00',credit_expected_month:'2026-11',devices:{}};
 run('currentPowerPerks={schema:1,status:"ok",updated_at:"2026-10-24T12:00:00Z",events:[event]}');
 run('renderPowerPerks(Date.parse("2026-10-24T13:00:00Z"))');
@@ -40,6 +41,21 @@ assert.match(run('powerPerksSessionNote({started:"2026-10-24T22:00:00Z",active:t
 run('currentPowerPerks=null; renderPowerPerks()');
 assert.equal(el('power-perks').innerHTML,'');
 assert.equal(el('hist-perks-note').hidden,true);
+assert.equal(run('perksWindow("2026-10-24","23:00","06:00").start'),'2026-10-24T22:00:00.000Z');
+assert.equal(run('perksWindow("2026-10-24","23:00","06:00").end'),'2026-10-25T06:00:00.000Z');
+assert.equal(run('perksWindow("2026-10-25","13:00","16:00").end'),'2026-10-25T16:00:00.000Z');
+assert.throws(()=>run('perksWindow("2026-10-25","01:30","03:00")'),/ambiguous/);
+assert.throws(()=>run('perksWindow("2027-03-28","01:30","03:00")'),/ambiguous/);
+assert.throws(()=>run('perksWindow("2026-02-31","13:00","16:00")'),/ambiguous/);
+ctx.sms="Great news, you've got Power Perks rewards starting tonight, 24 October. You'll get free electricity from 11pm-6am. Enjoy. We'll add the credit for your free hours the month after you earn them.";
+assert.equal(run('JSON.stringify(parsePerksSMS(sms,Date.parse("2026-10-24T12:00:00Z")))'),JSON.stringify({date:'2026-10-24',start:'23:00',end:'06:00'}));
+assert.equal(run('parsePerksSMS("Power Perks: free electricity tomorrow from 1pm-4pm",Date.parse("2026-10-24T12:00:00Z")).date'),'2026-10-25');
+assert.throws(()=>run('parsePerksSMS("Power Perks free electricity cancelled from 1pm-4pm")'),/confirmed/);
+assert.throws(()=>run('parsePerksSMS("Power Perks free electricity tomorrow from 1pm-4pm and 6pm-8pm")'),/separately/);
+ctx.event.cancelled=true; run('currentPowerPerks={schema:1,status:"ok",events:[event]}');
+assert.equal(run('powerPerksEvents().length'),0); delete ctx.event.cancelled;
+run('pendingPerksSave={start:event.start,end:event.end,cancel:false,since:0}; currentPowerPerks.automation={sync_ok:true,last_sync_at:"2026-10-24T12:00:00Z"}; confirmPerksSave()');
+assert.match(el('perks-save-status').textContent,/Pi confirmed/);
 // At the event boundaries, the hero switches net rate without changing the tariff.
 class TestDate extends Date { static now(){return TestDate.timestamp;} }
 TestDate.timestamp = Date.parse('2026-10-24T22:00:00Z');
@@ -57,4 +73,18 @@ assert.equal(el('now-price').textContent,'6.66');
 assert.equal(el('now-band-name').textContent,'OFF-PEAK');
 run('staleSince=5; renderTariff(tariff)');
 assert.equal(el('now-band-name').textContent,'STALE');
-console.log('Power Perks UI: DST, event boundaries, missing reads and separate credit passed');
+// PIN-gated writes use the dedicated event RPC, including server rejection/retry.
+(async()=>{
+  ctx.ensurePin=async()=>true; ctx.controlPin='fixture'; ctx.forgetPin=()=>{};
+  const calls=[];
+  ctx.rpc=async(name,args)=>{calls.push({name,args});return {ok:true,value:'ok'};};
+  assert.equal((await run('savePerksWindow(event)')).ok,true);
+  assert.equal(calls[0].name,'set_power_perks_event');
+  assert.equal(calls[0].args.p_cancel,false);
+  assert.equal(Object.keys(calls[0].args).length,4,'no SMS body is sent');
+  ctx.rpc=async()=>({ok:true,value:'overlap'});
+  assert.equal((await run('savePerksWindow(event)')).reason,'overlap');
+  ctx.ensurePin=async()=>false;
+  assert.equal((await run('savePerksWindow(event)')).reason,'cancelled');
+  console.log('Power Perks UI: DST, input parsing, PIN writes, event boundaries and credit passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});
