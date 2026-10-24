@@ -1,0 +1,26 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(__dirname+'/index.html','utf8'),elements=new Map();
+const el=id=>{if(!elements.has(id))elements.set(id,{textContent:'',value:''});return elements.get(id);};
+const ctx=vm.createContext({Date,JSON,Array,Uint8Array,document:{getElementById:el},currentPowerPerks:null,powerPerksEvents:()=>[]});
+const run=s=>vm.runInContext(s,ctx);
+run(html.slice(html.indexOf('// POWER PERKS FORWARDING.'),html.indexOf('// END POWER PERKS FORWARDING.')));
+(async()=>{
+  ctx.ensurePin=async()=>true;ctx.controlPin='fixture';ctx.forgetPin=()=>{};
+  let calls=[];ctx.rpc=async(name,args)=>{calls.push({name,args});return {ok:true,value:'ok'};};
+  assert.equal((await run('configurePerksForwarding("a".repeat(64))')).ok,true);
+  assert.equal(calls[0].name,'configure_power_perks_forwarding');
+  assert.equal(calls[0].args.p_token.length,64);
+  await run('configurePerksForwarding(null)');assert.equal(calls[1].args.p_token,null);
+  ctx.rpc=async()=>({ok:true,value:'bad_token'});assert.equal((await run('configurePerksForwarding("bad")')).ok,false);
+  ctx.ensurePin=async()=>false;assert.equal((await run('configurePerksForwarding(null)')).reason,'cancelled');
+  run('perksForwarding={enabled:false};renderPerksForwarding()');assert.match(el('perks-forward-status').textContent,/disabled/);
+  run('perksForwarding={enabled:true,status:"saved",message:"Waiting for Pi",received_at:"2026-10-24T13:00:00Z",start:"2026-10-25T13:00Z",end:"2026-10-25T16:00Z"};renderPerksForwarding()');
+  assert.match(el('perks-forward-status').textContent,/Waiting for Pi/);
+  ctx.currentPowerPerks={automation:{sync_ok:true,last_sync_at:'2026-10-24T13:01:00Z'}};
+  ctx.powerPerksEvents=()=>[{start:'2026-10-25T13:00Z',end:'2026-10-25T16:00Z'}];run('renderPerksForwarding()');
+  assert.match(el('perks-forward-status').textContent,/Pi confirmed/);
+  ctx.currentPowerPerks.automation.sync_ok=false;run('renderPerksForwarding()');
+  assert.doesNotMatch(el('perks-forward-status').textContent,/Pi confirmed/);
+  assert.doesNotMatch(html.slice(html.indexOf('// POWER PERKS FORWARDING.'),html.indexOf('// END POWER PERKS FORWARDING.')),/setItem/);
+  console.log('Forwarding UI: PIN gating, revoke, private key handling and Pi acknowledgement passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});
