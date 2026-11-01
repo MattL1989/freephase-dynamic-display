@@ -1,0 +1,58 @@
+name: Pi heartbeat
+
+# Fails - so GitHub emails the owner - when the home Pi stops updating the dashboard, i.e. the
+# live_state row is more than 20 minutes old. Nothing on the Pi can report its own death: a dead
+# Pi means no 22:59 charger start and nothing watching the chargers. Added 2026-11-01.
+# An outage is reported for its first hour, then once every 6 hours, not on every run.
+# The Pi re-enables this workflow weekly in case GitHub pauses it after 60 days without commits.
+
+on:
+  schedule:
+    - cron: "11,41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pi-heartbeat
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: index.html
+          sparse-checkout-cone-mode: false
+      - name: Check the Pi is still publishing
+        run: |
+          python3 - <<'PY'
+          import json, re, sys, urllib.request
+          from datetime import datetime, timezone
+          try:
+              src = open("index.html", encoding="utf-8").read()
+              url = re.search(r'const SUPABASE_URL\s*=\s*"([^"]+)"', src).group(1)
+              key = re.search(r'const SUPABASE_KEY\s*=\s*"([^"]+)"', src).group(1)   # the public read key
+          except Exception as e:
+              print(f"::error title=Heartbeat check needs updating::Could not find the Supabase settings in "
+                    f"index.html ({type(e).__name__}). This is the check itself, not the Pi.")
+              sys.exit(1)
+          req = urllib.request.Request(url + "/rest/v1/settings?key=eq.live_state&select=value",
+                                       headers={"apikey": key, "Authorization": "Bearer " + key})
+          try:
+              state = json.loads(json.load(urllib.request.urlopen(req, timeout=30))[0]["value"])
+              updated = datetime.fromisoformat(state["updated_at"])
+          except Exception as e:
+              print(f"Could not read the dashboard state ({type(e).__name__}); not treating that as a Pi fault.")
+              sys.exit(0)
+          age = (datetime.now(timezone.utc) - updated).total_seconds() / 60
+          print(f"Pi last published {age:.0f} min ago ({updated.isoformat()}).")
+          if age >= 20 and (age < 80 or age % 360 < 35):
+              print(f"::error title=Home Pi offline::The Pi has not updated the dashboard for {age:.0f} minutes. "
+                    "The chargers will not start at 22:59 and nothing is watching them. "
+                    "Check the Pi has power and Wi-Fi; it also restarts itself every day at 04:30.")
+              sys.exit(1)
+          PY

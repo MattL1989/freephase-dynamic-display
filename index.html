@@ -541,6 +541,13 @@
   .device-alert.peak{background:rgba(255,176,32,0.10);border:1px solid rgba(255,176,32,0.5);color:#ffd27a}
   .device-alert.volt{background:rgba(255,58,90,0.12);border:1px solid rgba(255,58,90,0.55);color:#ff8fa3}
   .device-alert small{display:block;font-weight:500;color:var(--text-dim);margin-top:4px}
+  .device-alert.info{background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.45);color:#9beefa}
+  .preheat-days{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+  .day-chip{border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:999px;
+    padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;min-width:48px;min-height:40px}
+  .day-chip.on{background:rgba(34,211,238,0.16);border-color:rgba(34,211,238,0.55);color:var(--cyan)}
+  .day-chip:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .sched-btn:disabled{opacity:0.45;cursor:default}
   #charge-panel.is-stale .devices-grid .charge-mode-pill,#charge-panel.is-stale .devices-grid .charge-grid,
   #charge-panel.is-stale .device-glance .g-status{opacity:0.7}
   @media (max-width:720px){ .charge-section{scroll-margin-top:170px} .device-glance a{min-height:56px;padding-top:8px;padding-bottom:8px} }
@@ -745,6 +752,43 @@
             </div>
           </div>
           <div class="sched-status" id="easee-sched-status"></div>
+        </div>
+      </details>
+      <details class="sched" id="easee-preheat">
+        <summary class="sched-head">
+          <span class="sched-title">Pre-heat top-up</span>
+          <span class="sched-state" id="preheat-state">Tue · 05:30 – 06:45</span>
+        </summary>
+        <div class="sched-content">
+          <p class="sched-hint">Every week on these days the Easee stays available at any price, so the BYD can pre-heat from the mains and keep its battery full until you leave. Starting before 06:00 means the Easee's own 06:00 cut-off never interrupts the charge. The POWER16 is not affected.</p>
+          <div class="preheat-days" id="preheat-days" role="group" aria-label="Pre-heat days"></div>
+          <div class="sched-body">
+            <div class="wheel-block">
+              <div class="wheel-label">From</div>
+              <div class="wheels">
+                <div class="wheel" id="preheat-start-h"></div>
+                <div class="wheel-sep">:</div>
+                <div class="wheel" id="preheat-start-m"></div>
+              </div>
+            </div>
+            <div class="wheel-block">
+              <div class="wheel-label">Until</div>
+              <div class="wheels">
+                <div class="wheel" id="preheat-end-h"></div>
+                <div class="wheel-sep">:</div>
+                <div class="wheel" id="preheat-end-m"></div>
+              </div>
+            </div>
+            <div class="sched-actions">
+              <button type="button" class="sched-btn arm" id="preheat-save">Save</button>
+              <button type="button" class="sched-btn cancel" id="preheat-skip">Skip next</button>
+              <button type="button" class="sched-btn cancel" id="preheat-toggle">Turn off</button>
+            </div>
+          </div>
+          <p class="sched-hint" id="preheat-note"></p>
+          <p class="sched-hint" id="preheat-car"></p>
+          <div class="sched-actions"><button type="button" class="sched-btn cancel" id="preheat-car-toggle">Car pre-heat: on</button></div>
+          <div class="sched-status" id="preheat-status" role="status"></div>
         </div>
       </details>
     </article>
@@ -980,7 +1024,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-10-26 audit-fixes-v15";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-01 failsafes-v16";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -2069,6 +2113,7 @@ async function loadLiveState(){
     renderChargeCost("easee",   (state.charge_sessions || {}).easee,   !!state.charge_sessions);
     try { renderChargeStarts(state.charge_starts); } catch (e) {}
     renderChargeCost("breaker", (state.charge_sessions || {}).breaker, !!state.charge_sessions);
+    try { preheatLive = state.easee_preheat || null; renderPreheat(); } catch (e) {}
     updateDeviceGlance(state);
     renderDeviceAlerts(state);
     // Window text comes from the controller, not hardcoded here - these two captions have
@@ -2864,8 +2909,11 @@ function updateDeviceGlance(state){
       const live = dev === "easee" ? (state.easee || {}).online === true : true;
       const charging = !!(active && active.charging && !active.unplugged && live && !stale);
       const fault = dev === "breaker" && Array.isArray(faults) && faults.length > 0;
-      const status = fault ? "Breaker fault" : charging ? "Charging now" : txt(pill) || "—";
-      set(dev, status, fault ? "warn" : charging ? "on" : /error|fault|offline/i.test(status) ? "warn" : "", lastText(dev, "Last"));
+      const locked = dev === "breaker" && !!(state.breaker_status || {}).lock;
+      const preOn = dev === "easee" && !!(state.easee_preheat || {}).active;
+      const status = locked ? "Locked off" : fault ? "Breaker fault" : charging ? (preOn ? "Pre-heat · charging" : "Charging now")
+        : preOn ? "Pre-heat window" : txt(pill) || "—";
+      set(dev, status, fault || locked ? "warn" : charging ? "on" : /error|fault|offline/i.test(status) ? "warn" : "", lastText(dev, "Last"));
       if (fault){ const d = document.getElementById("breaker-device-live"); if (d) d.open = true; }
       // Live readings open by themselves when a charge starts; otherwise the owner's choice stands.
       const det = document.getElementById(`${dev === "easee" ? "easee" : "breaker"}-device-live`);
@@ -2892,20 +2940,51 @@ function renderDeviceAlerts(state){
         `<small>Chargers and the immersion may stop. If lights are dim or flickering, ring 105 to report it.</small></div>`);
     }
     const faults = (state.tuya || {}).faults;
-    if (Array.isArray(faults) && faults.length){
+    const bs = state.breaker_status || {};
+    if (bs.lock){
+      out.push(`<div class="device-alert volt">⚠ POWER16 locked off since ${ukClock(bs.lock.since)}: ${escHtml(bs.lock.reason)}.` +
+        `<small>The Pi will not switch it back on by itself. Check the charger, the cable and the car's charge port. ` +
+        `When it is safe, set POWER16 to Off and wait for this warning to clear (about a minute), then set it back to Auto.</small></div>`);
+    } else if (Array.isArray(faults) && faults.length){
       out.push(`<div class="device-alert volt">⚠ POWER16 breaker fault: ${escHtml(faults.join(", ").replace(/_/g, " "))}.` +
         `<small>The breaker has reported an alarm. Check the charger and the breaker before using it.</small></div>`);
+    }
+    // Easee faults (31 Oct: "EV requires ventilation" sat unnoticed from 22:59 until 03:15).
+    const ez = state.easee || {}, ef = state.easee_fault || null;
+    const restarts = ef && Array.isArray(ef.restarts) && ef.restarts.length
+      ? `The Pi restarted it automatically at ${ef.restarts.map(t => ukClock(t)).join(" and ")}. ` : "";
+    if (ez.online === true && (ez.op_mode === 5 || (ef && ef.kind === "error"))){
+      out.push(`<div class="device-alert volt">⚠ Easee error${ef && ef.since ? " since " + ukClock(ef.since) : ""}: the BYD is not charging.` +
+        `<small>${ef && ef.text ? escHtml(ef.text) + ". " : ""}${restarts}Unplug the cable from the car for 10 seconds and plug it back in. ` +
+        `If it stays in error, switch the Easee off at its isolator for 30 seconds.</small></div>`);
+    } else if (ef && ef.kind === "pilot"){
+      out.push(`<div class="device-alert volt">⚠ The car's charge signal shows a fault (${escHtml(ef.detail)}) since ${ukClock(ef.since)}.` +
+        `<small>The Easee will refuse to charge when it next switches on. Unplug the cable from the car for 10 seconds and plug it back in.</small></div>`);
+    } else if (ef && ef.kind === "blocked"){
+      out.push(`<div class="device-alert peak">The Easee should be charging but ${escHtml(ef.detail)} (since ${ukClock(ef.since)}).</div>`);
     }
     const t = state.tariff || {}, cs = state.charge_sessions || {};
     const peak = t.period === "peak" && !powerPerksActive();
     const easee = state.easee || {};
     const easeeDrawing = easee.online === true && Number(easee.total_power_kw) >= 0.2;
     const brkDrawing = !!(cs.breaker && cs.breaker.active && cs.breaker.active.charging);
-    if (peak && (easeeDrawing || brkDrawing)){
-      const which = [easeeDrawing && "Easee", brkDrawing && "POWER16"].filter(Boolean).join(" and ");
+    // In the pre-heat window the Easee drawing at the peak rate is wanted, not a mistake.
+    const pre = state.easee_preheat || {};
+    const easeePeak = easeeDrawing && !pre.active;
+    if (peak && (easeePeak || brkDrawing)){
+      const which = [easeePeak && "Easee", brkDrawing && "POWER16"].filter(Boolean).join(" and ");
       const price = Number(t.price_p || t.peak_price_p);
-      out.push(`<div class="device-alert peak">${which} ${easeeDrawing && brkDrawing ? "are" : "is"} charging at the peak rate (${price.toFixed(2)}p/kWh).` +
+      out.push(`<div class="device-alert peak">${which} ${easeePeak && brkDrawing ? "are" : "is"} charging at the peak rate (${price.toFixed(2)}p/kWh).` +
         `<small>Overnight is ${Number(t.offpeak_price_p || 6.66).toFixed(2)}p. Set the charger to Auto to wait for 23:00, or use Scheduled charge for a timed top-up.</small></div>`);
+    }
+    if (pre.active){
+      const price = Number(t.price_p || t.peak_price_p);
+      out.push(`<div class="device-alert info">Pre-heat top-up on until ${escHtml(pre.end)}: the Easee is available` +
+        `${t.period === "peak" && price ? ` at ${price.toFixed(2)}p/kWh` : ""}${easeeDrawing ? ` and drawing ${Number(easee.total_power_kw).toFixed(1)} kW` : ""}.</div>`);
+    }
+    const rs = bs.restart;
+    if (rs && rs.result === "charging" && Date.now() - Date.parse(rs.at) < 12 * 3600000){
+      out.push(`<div class="device-alert info">POWER16 was not charging, so the Pi switched it off and on at ${ukClock(rs.at)}; the car then started.</div>`);
     }
   } catch (e) {}
   const html = out.join("");
@@ -3076,6 +3155,7 @@ const MINUTES = Array.from({length:12}, (_,i)=>String(i*5).padStart(2,"0"));
 const SCHED_KEY = { easee:"easee_schedule", breaker:"breaker_schedule" };
 const schedState = { easee:null, breaker:null };
 const schedWheelsSynced = { easee:false, breaker:false };
+let schedLoaded = false;          // the stored schedules have been read at least once
 
 function wheelIndex(el){
   const n = (el._values || []).length;
@@ -3168,6 +3248,7 @@ async function loadSchedules(){
       if (!s || typeof s !== "object") continue;
       const device = row.key === "easee_schedule" ? "easee" : "breaker";
       schedState[device] = s;
+      if (device === "easee") schedLoaded = true;
       renderSchedState(device);
       // Only position the wheels once, on first load — otherwise the 30s poll
       // would yank them out from under someone mid-scroll.
@@ -3185,6 +3266,8 @@ async function loadSchedules(){
 async function saveSchedule(device, body, okMsg){
   const statusEl = document.getElementById(`${device}-sched-status`);
   statusEl.className = "sched-status"; statusEl.textContent = "Saving…";
+  // Keep what else is stored with the one-shot window (the Easee's weekly pre-heat top-up).
+  body = Object.assign({}, schedState[device] || {}, body);
   const r = await writeControl(SCHED_KEY[device], JSON.stringify(body));
   if (r.ok){
     schedState[device] = body;
@@ -3218,6 +3301,175 @@ async function cancelSchedule(device){
     "Schedule cancelled");
 }
 
+// PRE-HEAT TOP-UP.
+// Weekly window in which the Pi keeps the Easee available at any price, so the BYD can pre-heat from
+// the mains and refill what it used (owner, 1 Nov 2026). Stored inside settings.easee_schedule as
+//   preheat: {enabled, days:[1-7, Mon=1], start:"HH:MM", end:"HH:MM", skip:"YYYY-MM-DD"|null}
+// The Pi publishes what it is actually using as live_state.easee_preheat (+ active, next_start/end).
+const PREHEAT_DEFAULT = {enabled:true, days:[2], start:"05:30", end:"06:45", skip:null};   // leaves ~06:30, full battery
+// The car part, run by the Pi's BYD service once the owner has entered the BYD PIN there.
+const PREHEAT_CAR_DEFAULT = {enabled:true, depart:"06:30", lead_min:15, cabin_c:20, seat:"high", wheel:true, below_c:15};
+let bydPreheat = null;            // settings.byd_preheat, published by the Pi's BYD service
+const PREHEAT_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+let preheatLive = null;
+let preheatDraft = null;          // day chips being edited, not yet saved
+let preheatWheelsSynced = false;
+
+function preheatSaved(){
+  // The stored row first (updated the moment a save lands); the Pi's published copy runs up to a
+  // minute behind, and is only the fallback (it also carries the default / last-remembered window).
+  const p = ((typeof schedState !== "undefined" && schedState.easee) || {}).preheat || preheatLive;
+  if (!p || typeof p !== "object") return Object.assign({}, PREHEAT_DEFAULT);
+  const out = {enabled: p.enabled === true, days: Array.isArray(p.days) ? p.days.slice() : [2],
+               start: p.start || "05:30", end: p.end || "06:45", skip: p.skip || null};
+  if (p.car && typeof p.car === "object") out.car = Object.assign({}, p.car);   // kept on every save
+  return out;
+}
+function ukDateKey(t){ return new Date(t).toLocaleDateString("en-CA", {timeZone:"Europe/London"}); }
+function fmtSkip(day){ return new Date(day + "T12:00:00Z").toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"}); }
+function preheatDayText(days){
+  const d = (days || []).slice().sort((a, b) => a - b);
+  if (d.length === 7) return "Every day";
+  if (d.join() === "1,2,3,4,5") return "Weekdays";
+  return d.map(n => PREHEAT_DAYS[n - 1]).join(", ") || "No days";
+}
+function preheatSkipping(cfg, now){ return !!(cfg.skip && cfg.skip >= ukDateKey(now || Date.now())); }
+function renderPreheat(now){
+  const cfg = preheatSaved(), live = preheatLive || {};
+  const pill = document.getElementById("preheat-state");
+  if (!pill) return;
+  if (!cfg.enabled){ pill.className = "sched-state"; pill.textContent = "Off"; }
+  else if (live.active){ pill.className = "sched-state active"; pill.textContent = `On now · until ${cfg.end}`; }
+  else { pill.className = "sched-state armed"; pill.textContent = `${preheatDayText(cfg.days)} · ${cfg.start} – ${cfg.end}`; }
+  const sel = preheatDraft || cfg.days;
+  const box = document.getElementById("preheat-days");
+  if (box) box.innerHTML = PREHEAT_DAYS.map((n, i) =>
+    `<button type="button" class="day-chip${sel.includes(i + 1) ? " on" : ""}" data-day="${i + 1}" aria-pressed="${sel.includes(i + 1)}">${n}</button>`).join("");
+  const skipping = preheatSkipping(cfg, now);
+  const skip = document.getElementById("preheat-skip"), toggle = document.getElementById("preheat-toggle");
+  if (skip){
+    skip.textContent = skipping ? "Undo skip" : live.active ? "Stop today" : "Skip next";
+    skip.disabled = !cfg.enabled || (!skipping && !live.next_start);
+  }
+  if (toggle) toggle.textContent = cfg.enabled ? "Turn off" : "Turn on";
+  const note = document.getElementById("preheat-note");
+  if (note){
+    const peak = Number(((typeof currentTariff !== "undefined" && currentTariff) || {}).peak_price_p) || 29.759;
+    const nxt = cfg.enabled && live.next_start
+      ? `Next: ${new Date(live.next_start).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"})} ${fmtClock(live.next_start)}. ` : "";
+    note.textContent = (skipping ? `Skipping ${fmtSkip(cfg.skip)}. ` : "") + nxt +
+      `Peak rate ${peak.toFixed(2)}p/kWh: a 20-minute pre-heat is roughly 1 kWh (≈${Math.round(peak)}p). ` +
+      `If the battery also needs filling the Easee can draw up to 7 kW (≈£${(7 * peak / 100).toFixed(2)} an hour).`;
+  }
+  const carEl = document.getElementById("preheat-car"), carBtn = document.getElementById("preheat-car-toggle");
+  const car = Object.assign({}, PREHEAT_CAR_DEFAULT, cfg.car || {});
+  if (carEl){
+    const st = bydPreheat || {};
+    const dep = String(car.depart).split(":").map(Number), startMin = dep[0] * 60 + dep[1] - (Number(car.lead_min) || 15);
+    const at = `${String(Math.floor(startMin / 60)).padStart(2, "0")}:${String(startMin % 60).padStart(2, "0")}`;
+    let text = "Car pre-heat: off.";
+    if (cfg.enabled && car.enabled){
+      text = `Car pre-heat: ${at}–${car.depart}, cabin ${car.cabin_c}°C` + (car.seat !== "off" ? ", driver's seat heat" : "") +
+        (car.wheel ? ", steering wheel heat" : "") + `, when it is below ${car.below_c}°C outside. ` +
+        (st.status === "ready" ? "Ready." : st.status === "pin_rejected" ? "BYD rejected the PIN - enter it again with byd_pin.py on the PC."
+          : "Waiting for your BYD PIN - run byd_pin.py on the PC.");
+    }
+    const last = st.last;
+    if (last && last.at && !isNaN(new Date(last.at))){
+      const when = new Date(last.at).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"}) + " " + fmtClock(last.at);
+      const temp = Number.isFinite(last.outside_c) ? ` (${last.outside_c}°C ${last.temp_source === "cabin" ? "in the car" : "outside"})` : "";
+      const what = last.result === "started" ? "started" + temp : last.result === "partial" ? "partly started" + temp
+        : last.result === "skipped" ? "skipped: " + (last.detail || "") : "failed" + (last.detail ? ": " + last.detail : "");
+      text += ` Last: ${when}, ${what}.`;
+    }
+    carEl.textContent = text;
+  }
+  if (carBtn){ carBtn.textContent = car.enabled ? "Car pre-heat: on" : "Car pre-heat: off"; carBtn.disabled = !cfg.enabled; }
+  if (!preheatWheelsSynced && document.getElementById("preheat-start-h") && document.getElementById("preheat-start-h")._values){
+    const [sh, sm] = cfg.start.split(":"), [eh, em] = cfg.end.split(":");
+    setWheelTo("preheat-start-h", sh); setWheelTo("preheat-start-m", sm);
+    setWheelTo("preheat-end-h", eh); setWheelTo("preheat-end-m", em);
+    preheatWheelsSynced = true;
+  }
+}
+async function savePreheat(next, okMsg){
+  const st = document.getElementById("preheat-status");
+  if (!schedLoaded){
+    // Saving rewrites the whole easee_schedule row: without the stored one-shot window it would be lost.
+    st.className = "sched-status err"; st.textContent = "Still loading the schedule - try again in a moment.";
+    return { ok:false, reason:"not_loaded" };
+  }
+  st.className = "sched-status"; st.textContent = "Saving…";
+  const body = Object.assign({enabled:false, start:"01:00", end:"05:00", fired:false}, schedState.easee || {}, {preheat: next});
+  const r = await writeControl(SCHED_KEY.easee, JSON.stringify(body));
+  if (r.ok){
+    schedState.easee = body;
+    preheatLive = Object.assign({}, preheatLive || {}, next, next.enabled ? {} : {active:false});
+    preheatDraft = null;
+    renderPreheat();
+    st.className = "sched-status ok"; st.textContent = `${okMsg} (Pi applies within ~30s)`;
+  } else {
+    st.className = "sched-status err"; st.textContent = reasonText(r.reason);
+  }
+  return r;
+}
+function preheatSave(){
+  const start = `${wheelValue("preheat-start-h")}:${wheelValue("preheat-start-m")}`;
+  const end = `${wheelValue("preheat-end-h")}:${wheelValue("preheat-end-m")}`;
+  const days = (preheatDraft || preheatSaved().days).slice().sort((a, b) => a - b);
+  const st = document.getElementById("preheat-status");
+  if (start >= end){ st.className = "sched-status err"; st.textContent = "The end must be after the start, on the same day."; return null; }
+  if (!days.length){ st.className = "sched-status err"; st.textContent = "Pick at least one day, or use Turn off."; return null; }
+  return savePreheat({enabled:true, days, start, end, skip: preheatSaved().skip}, `Pre-heat top-up: ${preheatDayText(days)} ${start} – ${end}`);
+}
+function preheatSkip(){
+  const cfg = preheatSaved(), live = preheatLive || {};
+  if (preheatSkipping(cfg)) return savePreheat(Object.assign({}, cfg, {skip:null}), "Skip cancelled");
+  if (!live.next_start) return null;
+  const day = ukDateKey(live.next_start);
+  return savePreheat(Object.assign({}, cfg, {skip:day}), live.active ? "Stopped for today" : `Skipping ${fmtSkip(day)}`);
+}
+function preheatCarToggle(){
+  const cfg = preheatSaved(), car = Object.assign({}, PREHEAT_CAR_DEFAULT, cfg.car || {});
+  car.enabled = !car.enabled;
+  return savePreheat(Object.assign({}, cfg, {car}), car.enabled ? "Car pre-heat turned on" : "Car pre-heat turned off");
+}
+async function loadBydPreheat(){
+  try {
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.byd_preheat&select=value`, {
+      headers:{apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`}, cache:"no-store"});
+    const v = Array.isArray(rows) && rows.length ? rows[0].value : null;
+    const parsed = typeof v === "string" ? JSON.parse(v) : v;
+    if (parsed && typeof parsed === "object" && parsed.schema === 1) bydPreheat = parsed;
+  } catch (_) {}
+  try { renderPreheat(); } catch (_) {}
+}
+function preheatToggle(){
+  const cfg = preheatSaved();
+  return savePreheat(Object.assign({}, cfg, {enabled: !cfg.enabled}), cfg.enabled ? "Pre-heat top-up turned off" : "Pre-heat top-up turned on");
+}
+function setupPreheat(){
+  buildWheel("preheat-start-h", HOURS, "05"); buildWheel("preheat-start-m", MINUTES, "30");
+  buildWheel("preheat-end-h", HOURS, "06");   buildWheel("preheat-end-m", MINUTES, "45");
+  const details = document.getElementById("easee-preheat");
+  details.addEventListener("toggle", () => {
+    if (!details.open) return;
+    details.querySelectorAll(".wheel").forEach(el => setWheel(el.id, el._selectedIndex || 0, false));
+  });
+  document.getElementById("preheat-days").addEventListener("click", ev => {
+    const b = ev.target.closest(".day-chip"); if (!b) return;
+    const d = Number(b.dataset.day), cur = (preheatDraft || preheatSaved().days).slice();
+    preheatDraft = cur.includes(d) ? cur.filter(x => x !== d) : cur.concat(d).sort((a, b) => a - b);
+    renderPreheat();
+  });
+  document.getElementById("preheat-save").addEventListener("click", preheatSave);
+  document.getElementById("preheat-skip").addEventListener("click", preheatSkip);
+  document.getElementById("preheat-toggle").addEventListener("click", preheatToggle);
+  document.getElementById("preheat-car-toggle").addEventListener("click", preheatCarToggle);
+  renderPreheat();
+}
+// END PRE-HEAT.
+
 async function init(){
   const cpb = document.getElementById("change-pin-btn");
   if (cpb) cpb.addEventListener("click", function(){ changePin(); });
@@ -3235,6 +3487,9 @@ async function init(){
   setupPerksForwarding();
   initWheels();
   await loadSchedules();
+  try { setupPreheat(); } catch (e) { console.error("pre-heat setup failed", e); }
+  loadBydPreheat();
+  setInterval(loadBydPreheat, 60_000);
   loadLiveState();                             // tariff AND device state both come from live_state
   loadBydState();
   setInterval(loadBydState, 60_000);
