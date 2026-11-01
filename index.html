@@ -701,7 +701,7 @@
         <p class="vehicle-note" id="byd-updated" hidden></p>
         <div class="dc-stop" id="byd-dc-stop">
           <div class="dc-stop-row">
-            <label for="byd-dc-pct">Stop a public charge at</label>
+            <label for="byd-dc-pct">Email me when a public charge reaches</label>
             <select id="byd-dc-pct" aria-label="Battery level to stop at"></select>
             <button type="button" class="sched-btn arm" id="byd-dc-arm">Arm</button>
             <button type="button" class="sched-btn cancel" id="byd-dc-cancel">Cancel</button>
@@ -1038,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-01 dc-stop-v18";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-01 charge-alert-v19";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3460,9 +3460,10 @@ function preheatCarToggle(){
   car.enabled = !car.enabled;
   return savePreheat(Object.assign({}, cfg, {car}), car.enabled ? "Car pre-heat turned on" : "Car pre-heat turned off");
 }
-// STOP A PUBLIC CHARGE AT X%. BYD's cloud has no stop-charge command; the Pi's BYD service unlocks the
-// car twice (like a key-fob double press), which stops a DC charge, and locks it again ~60 s later.
-// Armed as easee_schedule.byd_stop {enabled, pct, set_at}; lapses after 6 h; never on the home Easee.
+// PUBLIC CHARGE ALERT AT X%. The car cannot be stopped remotely (BYD's stop command is a no-op and a
+// remote double unlock did not stop a DC charge - tested 1 Nov 2026), so the Pi's BYD service emails the
+// owner when the battery reaches the armed %. Armed as easee_schedule.byd_stop {enabled, pct, set_at};
+// lapses after 6 h; once per arming; not on the home Easee.
 let bydDcStop = null;             // settings.byd_dc_stop, published by the Pi's BYD service
 const DC_ARM_MS = 6 * 3600000;
 function dcArming(){
@@ -3475,28 +3476,26 @@ function renderBydDcStop(){
   const sel = document.getElementById("byd-dc-pct"), st = document.getElementById("byd-dc-status");
   if (!sel || !st) return;
   if (!sel.options.length){
-    for (let p = 50; p <= 100; p += 5){ const o = document.createElement("option"); o.value = String(p); o.textContent = p + "%"; sel.appendChild(o); }
+    for (let p = 20; p <= 100; p += 5){ const o = document.createElement("option"); o.value = String(p); o.textContent = p + "%"; sel.appendChild(o); }
     sel.value = "80";
   }
   const arm = dcArming(), svc = bydDcStop || {}, last = svc.last;
   const cancel = document.getElementById("byd-dc-cancel");
   if (cancel) cancel.disabled = !arm;
-  const how = "At that level the Pi unlocks the car twice to stop the charge, then locks it again about a minute later - stay near the car. For public chargers; it never acts on the home Easee.";
+  const how = "The car can't be stopped remotely, so the Pi emails you at that level and you stop it at the charger or in its app. For public chargers.";
   // The service's result belongs to this arming (times compared, not strings: Python and JS format them differently).
   const sameArming = !!(arm && svc.set_at && Date.parse(svc.set_at) === Date.parse(arm.set_at));
   if (sameArming && svc.status === "done" && last){
     const when = last.at ? fmtClock(last.at) : "";
-    st.textContent = last.result === "stopped" ? `Stopped at ${Math.round(last.pct || last.from_pct)}% at ${when} (target ${last.target}%).`
-      : last.result === "still_charging" ? `Reached ${Math.round(last.from_pct)}% at ${when} but it is STILL CHARGING - stop it at the charger.`
-      : last.result === "lock_failed" ? `Stopped at ${when}, but the car may be UNLOCKED - lock it from the BYD app.`
-      : `Tried at ${when} but it did not work - stop it at the charger.`;
+    st.textContent = last.result === "notified" ? `Reached ${Math.round(last.pct)}% at ${when} - email sent. Stop the charge at the charger.`
+      : last.result === "email_failed" ? `Reached ${Math.round(last.pct)}% at ${when}, but the email could not be sent.`
+      : `Reached the target at ${when}.`;
     return;
   }
   if (!arm){ st.textContent = "Not armed. " + how; return; }
   const now = Number.isFinite(svc.now_pct) && svc.pct === arm.pct ? ` - now ${Math.round(svc.now_pct)}%${svc.charging ? ", charging" : ""}` : "";
   st.textContent = svc.status === "at_home" ? `Armed for ${arm.pct}%, but the car is on the home Easee - it won't act here.`
-    : svc.status === "needs_pin" ? `Armed for ${arm.pct}%, but the Pi has no BYD PIN - run byd_pin.py on the PC.`
-    : `Armed: stops the charge at ${arm.pct}%${now}. Lapses 6 hours after arming.`;
+    : `Armed: emails you at ${arm.pct}%${now}. Lapses 6 hours after arming.`;
 }
 async function saveDcStop(byd_stop, okMsg){
   const st = document.getElementById("byd-dc-status");

@@ -145,23 +145,21 @@ assert.equal(el('preheat-skip').textContent, 'Skip next');
   // ---- stop a public charge at X%
   const sel = el('byd-dc-pct'); sel.options = []; sel.appendChild = function(o){ this.options.push(o); };
   run('renderBydDcStop()');
-  assert.equal(sel.options.length, 11, '50-100% in 5% steps');
-  assert.match(el('byd-dc-status').textContent, /^Not armed\. At that level the Pi unlocks the car twice/);
+  assert.equal(sel.options.length, 17, '20-100% in 5% steps');
+  assert.match(el('byd-dc-status').textContent, /^Not armed\. The car can't be stopped remotely, so the Pi emails you/);
   sel.value = '60';
   await run('dcStopArm()');
   let body2 = writes.at(-1)[1];
   assert.equal(JSON.stringify([body2.byd_stop.enabled, body2.byd_stop.pct]), '[true,60]');
   assert.ok(Date.parse(body2.byd_stop.set_at), 'arming time recorded');
   assert.ok(body2.preheat && body2.preheat.car, 'arming keeps the pre-heat and car settings');
-  assert.match(el('byd-dc-status').textContent, /Armed: stops the charge at 60%/);
+  assert.match(el('byd-dc-status').textContent, /Armed: emails you at 60%/);
   const armedAt = body2.byd_stop.set_at;
   run(`bydDcStop = {schema:1, status:"armed", pct:60, now_pct:52, charging:true, set_at:${JSON.stringify(armedAt)}}; renderBydDcStop()`);
   assert.match(el('byd-dc-status').textContent, /now 52%, charging/);
   run(`bydDcStop = {schema:1, status:"done", pct:60, set_at:${JSON.stringify(armedAt.replace('Z', '+00:00'))},
-        last:{result:"stopped", pct:61, from_pct:60, target:60, at:"2026-11-02T14:32:00Z"}}; renderBydDcStop()`);
-  assert.match(el('byd-dc-status').textContent, /Stopped at 61% at 14:32 \(target 60%\)/);
-  run(`bydDcStop.last = {result:"still_charging", from_pct:61, target:60, at:"2026-11-02T14:32:00Z"}; renderBydDcStop()`);
-  assert.match(el('byd-dc-status').textContent, /STILL CHARGING - stop it at the charger/);
+        last:{result:"notified", pct:61, target:60, at:"2026-11-02T14:32:00Z"}}; renderBydDcStop()`);
+  assert.match(el('byd-dc-status').textContent, /Reached 61% at 14:32 - email sent/);
   await run('dcStopCancel()');
   assert.equal(writes.at(-1)[1].byd_stop.enabled, false);
   assert.match(el('byd-dc-status').textContent, /^Not armed\./);
