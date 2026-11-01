@@ -548,6 +548,11 @@
   .day-chip.on{background:rgba(34,211,238,0.16);border-color:rgba(34,211,238,0.55);color:var(--cyan)}
   .day-chip:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   .sched-btn:disabled{opacity:0.45;cursor:default}
+  .dc-stop{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .dc-stop-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--text-dim)}
+  .dc-stop-row select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;
+    padding:8px 10px;font-size:14px;min-height:40px}
+  .dc-stop-row .sched-btn{padding:10px 16px}
   #charge-panel.is-stale .devices-grid .charge-mode-pill,#charge-panel.is-stale .devices-grid .charge-grid,
   #charge-panel.is-stale .device-glance .g-status{opacity:0.7}
   @media (max-width:720px){ .charge-section{scroll-margin-top:170px} .device-glance a{min-height:56px;padding-top:8px;padding-bottom:8px} }
@@ -694,6 +699,15 @@
         <progress class="vehicle-battery" id="byd-meter" max="100" value="0" aria-label="BYD battery percentage" hidden></progress>
         <p class="vehicle-note" id="byd-status" role="status">Loading car connection…</p>
         <p class="vehicle-note" id="byd-updated" hidden></p>
+        <div class="dc-stop" id="byd-dc-stop">
+          <div class="dc-stop-row">
+            <label for="byd-dc-pct">Stop a public charge at</label>
+            <select id="byd-dc-pct" aria-label="Battery level to stop at"></select>
+            <button type="button" class="sched-btn arm" id="byd-dc-arm">Arm</button>
+            <button type="button" class="sched-btn cancel" id="byd-dc-cancel">Cancel</button>
+          </div>
+          <p class="vehicle-note" id="byd-dc-status" role="status"></p>
+        </div>
       </section>
 
 
@@ -1024,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-01 failsafes-v17";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-01 dc-stop-v18";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3446,6 +3460,73 @@ function preheatCarToggle(){
   car.enabled = !car.enabled;
   return savePreheat(Object.assign({}, cfg, {car}), car.enabled ? "Car pre-heat turned on" : "Car pre-heat turned off");
 }
+// STOP A PUBLIC CHARGE AT X%. BYD's cloud has no stop-charge command; the Pi's BYD service unlocks the
+// car twice (like a key-fob double press), which stops a DC charge, and locks it again ~60 s later.
+// Armed as easee_schedule.byd_stop {enabled, pct, set_at}; lapses after 6 h; never on the home Easee.
+let bydDcStop = null;             // settings.byd_dc_stop, published by the Pi's BYD service
+const DC_ARM_MS = 6 * 3600000;
+function dcArming(){
+  const b = ((typeof schedState !== "undefined" && schedState.easee) || {}).byd_stop;
+  if (!b || b.enabled !== true || !(b.pct >= 20 && b.pct <= 100)) return null;
+  const at = Date.parse(b.set_at);
+  return Number.isFinite(at) && Date.now() - at < DC_ARM_MS ? b : null;
+}
+function renderBydDcStop(){
+  const sel = document.getElementById("byd-dc-pct"), st = document.getElementById("byd-dc-status");
+  if (!sel || !st) return;
+  if (!sel.options.length){
+    for (let p = 50; p <= 100; p += 5){ const o = document.createElement("option"); o.value = String(p); o.textContent = p + "%"; sel.appendChild(o); }
+    sel.value = "80";
+  }
+  const arm = dcArming(), svc = bydDcStop || {}, last = svc.last;
+  const cancel = document.getElementById("byd-dc-cancel");
+  if (cancel) cancel.disabled = !arm;
+  const how = "At that level the Pi unlocks the car twice to stop the charge, then locks it again about a minute later - stay near the car. For public chargers; it never acts on the home Easee.";
+  // The service's result belongs to this arming (times compared, not strings: Python and JS format them differently).
+  const sameArming = !!(arm && svc.set_at && Date.parse(svc.set_at) === Date.parse(arm.set_at));
+  if (sameArming && svc.status === "done" && last){
+    const when = last.at ? fmtClock(last.at) : "";
+    st.textContent = last.result === "stopped" ? `Stopped at ${Math.round(last.pct || last.from_pct)}% at ${when} (target ${last.target}%).`
+      : last.result === "still_charging" ? `Reached ${Math.round(last.from_pct)}% at ${when} but it is STILL CHARGING - stop it at the charger.`
+      : last.result === "lock_failed" ? `Stopped at ${when}, but the car may be UNLOCKED - lock it from the BYD app.`
+      : `Tried at ${when} but it did not work - stop it at the charger.`;
+    return;
+  }
+  if (!arm){ st.textContent = "Not armed. " + how; return; }
+  const now = Number.isFinite(svc.now_pct) && svc.pct === arm.pct ? ` - now ${Math.round(svc.now_pct)}%${svc.charging ? ", charging" : ""}` : "";
+  st.textContent = svc.status === "at_home" ? `Armed for ${arm.pct}%, but the car is on the home Easee - it won't act here.`
+    : svc.status === "needs_pin" ? `Armed for ${arm.pct}%, but the Pi has no BYD PIN - run byd_pin.py on the PC.`
+    : `Armed: stops the charge at ${arm.pct}%${now}. Lapses 6 hours after arming.`;
+}
+async function saveDcStop(byd_stop, okMsg){
+  const st = document.getElementById("byd-dc-status");
+  if (!schedLoaded){ st.textContent = "Still loading - try again in a moment."; return { ok:false, reason:"not_loaded" }; }
+  st.textContent = "Saving…";
+  const body = Object.assign({enabled:false, start:"01:00", end:"05:00", fired:false}, schedState.easee || {}, {byd_stop});
+  const r = await writeControl(SCHED_KEY.easee, JSON.stringify(body));
+  if (r.ok){ schedState.easee = body; renderBydDcStop(); }
+  else st.textContent = reasonText(r.reason);
+  return r;
+}
+function dcStopArm(){
+  const pct = parseInt(document.getElementById("byd-dc-pct").value, 10);
+  return saveDcStop({enabled:true, pct, set_at:new Date().toISOString()}, `Armed for ${pct}%.`);
+}
+function dcStopCancel(){
+  const cur = (schedState.easee || {}).byd_stop || {pct:80, set_at:new Date().toISOString()};
+  return saveDcStop({enabled:false, pct:cur.pct, set_at:cur.set_at}, "Cancelled.");
+}
+async function loadBydDcStop(){
+  try {
+    const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.byd_dc_stop&select=value`, {
+      headers:{apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`}, cache:"no-store"});
+    const v = Array.isArray(rows) && rows.length ? rows[0].value : null;
+    const parsed = typeof v === "string" ? JSON.parse(v) : v;
+    if (parsed && typeof parsed === "object" && parsed.schema === 1) bydDcStop = parsed;
+  } catch (_) {}
+  try { renderBydDcStop(); } catch (_) {}
+}
+// END STOP A PUBLIC CHARGE.
 async function loadBydPreheat(){
   try {
     const rows = await fetchJSON(`${SUPABASE_URL}/rest/v1/settings?key=eq.byd_preheat&select=value`, {
@@ -3502,6 +3583,12 @@ async function init(){
   try { setupPreheat(); } catch (e) { console.error("pre-heat setup failed", e); }
   loadBydPreheat();
   setInterval(loadBydPreheat, 60_000);
+  try {
+    document.getElementById("byd-dc-arm").addEventListener("click", dcStopArm);
+    document.getElementById("byd-dc-cancel").addEventListener("click", dcStopCancel);
+  } catch (e) { console.error("charge stop setup failed", e); }
+  loadBydDcStop();
+  setInterval(loadBydDcStop, 30_000);
   loadLiveState();                             // tariff AND device state both come from live_state
   loadBydState();
   setInterval(loadBydState, 60_000);
