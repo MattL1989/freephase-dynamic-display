@@ -62,6 +62,18 @@ a = alerts({easee: {online: true, total_power_kw: 2.4}, easee_preheat: {active: 
 assert.match(a, /POWER16 is charging at the peak rate/);
 assert.match(alerts({easee: {online: true, total_power_kw: 7.2}}), /Easee is charging at the peak rate/);
 
+// ---- the 21:00 check: no peak warning while it runs; then its result for the evening
+a = alerts({easee: {online: true, total_power_kw: 7.1}, last_state: 'charger_check', charge_sessions: {breaker: {active: {charging: true}}}});
+assert.doesNotMatch(a, /peak rate/);
+assert.match(a, /21:00 charger check: both chargers on briefly/);
+const at = new Date(Date.now() - 30 * 60000).toISOString();
+a = alerts({easee: {}, charger_check: {at, active: false, easee: {result: 'ok', detail: 'drawing 7.1 kW'},
+  breaker: {result: 'problem', detail: 'no power drawn - the car may be full or not plugged in'}}});
+assert.match(a, /device-alert volt/);
+assert.match(a, /Easee \/ BYD: OK \(drawing 7\.1 kW\); POWER16: PROBLEM \(no power drawn/);
+a = alerts({easee: {}, charger_check: {at, easee: {result: 'ok', detail: 'drawing 7.1 kW'}, breaker: {result: 'ok', detail: 'drawing power'}}});
+assert.match(a, /device-alert info/);
+
 // ---- nightly POWER16 restart that got the car going
 a = alerts({easee: {}, breaker_status: {restart: {at: new Date(Date.now() - 3600000).toISOString(), result: 'charging'}}});
 assert.match(a, /POWER16 was not charging, so the Pi switched it off and on/);

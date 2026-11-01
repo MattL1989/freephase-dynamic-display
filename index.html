@@ -1024,7 +1024,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-01 failsafes-v16";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-01 failsafes-v17";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -2968,10 +2968,22 @@ function renderDeviceAlerts(state){
     const easee = state.easee || {};
     const easeeDrawing = easee.online === true && Number(easee.total_power_kw) >= 0.2;
     const brkDrawing = !!(cs.breaker && cs.breaker.active && cs.breaker.active.charging);
-    // In the pre-heat window the Easee drawing at the peak rate is wanted, not a mistake.
+    // In the pre-heat window the Easee drawing at the peak rate is wanted, not a mistake; so is the
+    // 21:00 check (both on for up to 150 s to confirm the cars take power).
     const pre = state.easee_preheat || {};
-    const easeePeak = easeeDrawing && !pre.active;
-    if (peak && (easeePeak || brkDrawing)){
+    const chk = state.charger_check || {};
+    const checking = state.last_state === "charger_check" || chk.active === true;
+    const easeePeak = easeeDrawing && !pre.active && !checking;
+    if (checking){
+      out.push(`<div class="device-alert info">21:00 charger check: both chargers on briefly to confirm the cars take power.</div>`);
+    } else if (chk.at && !isNaN(new Date(chk.at)) && Date.now() - Date.parse(chk.at) < 3 * 3600000){
+      const line = (name, r) => r ? `${name}: ${r.result === "ok" ? "OK" : r.result === "skipped" ? "skipped" : "PROBLEM"} (${escHtml(r.detail || "")})` : "";
+      const bad = [chk.easee, chk.breaker].some(r => r && r.result === "problem");
+      out.push(`<div class="device-alert ${bad ? "volt" : "info"}">${bad ? "⚠ " : ""}21:00 charger check at ${ukClock(chk.at)}: ` +
+        `${line("Easee / BYD", chk.easee)}; ${line("POWER16", chk.breaker)}.` +
+        (bad ? `<small>Fix it before bed if you can - the chargers start as usual at 22:59.</small>` : "") + `</div>`);
+    }
+    if (peak && !checking && (easeePeak || brkDrawing)){
       const which = [easeePeak && "Easee", brkDrawing && "POWER16"].filter(Boolean).join(" and ");
       const price = Number(t.price_p || t.peak_price_p);
       out.push(`<div class="device-alert peak">${which} ${easeePeak && brkDrawing ? "are" : "is"} charging at the peak rate (${price.toFixed(2)}p/kWh).` +
