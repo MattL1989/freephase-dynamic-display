@@ -1,10 +1,14 @@
 name: Pi heartbeat
 
-# Fails - so GitHub emails the owner - when the home Pi stops updating the dashboard, i.e. the
-# live_state row is more than 20 minutes old. Nothing on the Pi can report its own death: a dead
-# Pi means no 22:59 charger start and nothing watching the chargers. Added 2026-11-01.
-# An outage is reported for its first hour, then once every 6 hours, not on every run.
-# The Pi re-enables this workflow weekly in case GitHub pauses it after 60 days without commits.
+# Fails - so GitHub emails the owner - when something the night's charging depends on has stopped:
+#  - the home Pi stops updating the dashboard (live_state more than 20 minutes old). Nothing on the Pi can report
+#    its own death: a dead Pi means no 22:58 charger start and nothing watching the chargers. Added 2026-11-01.
+#  - the BYD service stops reading the car while it is plugged in at home (byd_vehicle more than 75 minutes old):
+#    it runs the 23:04 start and the night recovery. Added 2026-11-02.
+#  - Supabase refuses the public key, a row is missing, or Supabase stays unreachable: the Pi and the BYD service
+#    share their state through it. Added 2026-11-02 (it used to pass silently).
+# Each problem is reported for its first hour, then once every 6 hours; when it began is kept between runs in the
+# Actions cache. The Pi re-enables this workflow weekly in case GitHub pauses it after 60 days without commits.
 
 on:
   schedule:
@@ -27,11 +31,29 @@ jobs:
         with:
           sparse-checkout: index.html
           sparse-checkout-cone-mode: false
-      - name: Check the Pi is still publishing
+      - name: Restore when each problem began
+        uses: actions/cache/restore@v4
+        with:
+          path: hb-state.json
+          key: hb-state-${{ github.run_id }}
+          restore-keys: hb-state-
+      - name: Check the Pi, its BYD service and the data they share
         run: |
           python3 - <<'PY'
-          import json, re, sys, urllib.request
+          import json, re, sys, time, urllib.error, urllib.request
           from datetime import datetime, timezone
+
+          NOW = datetime.now(timezone.utc)
+          try:
+              prev = json.load(open("hb-state.json"))
+          except Exception:
+              prev = {}
+          problems = {}                                     # kind -> (minutes since it began, title, message)
+
+          def remember(kind, title, message, since=None):
+              began = since or datetime.fromisoformat(prev.get(kind, NOW.isoformat()))
+              problems[kind] = ((NOW - began).total_seconds() / 60, title, message, began)
+
           try:
               src = open("index.html", encoding="utf-8").read()
               url = re.search(r'const SUPABASE_URL\s*=\s*"([^"]+)"', src).group(1)
@@ -40,19 +62,85 @@ jobs:
               print(f"::error title=Heartbeat check needs updating::Could not find the Supabase settings in "
                     f"index.html ({type(e).__name__}). This is the check itself, not the Pi.")
               sys.exit(1)
-          req = urllib.request.Request(url + "/rest/v1/settings?key=eq.live_state&select=value",
-                                       headers={"apikey": key, "Authorization": "Bearer " + key})
+          headers = {"apikey": key}
+          if key.count(".") == 2:                           # a legacy JWT key also goes as a bearer token
+              headers["Authorization"] = "Bearer " + key
+
+          def read(row):
+              last = None
+              for attempt in range(3):
+                  try:
+                      req = urllib.request.Request(f"{url}/rest/v1/settings?key=eq.{row}&select=value", headers=headers)
+                      with urllib.request.urlopen(req, timeout=30) as r:
+                          rows = json.load(r)
+                      if not rows:
+                          raise LookupError(f"the {row} row is missing or no longer readable with the public key")
+                      v = rows[0]["value"]
+                      return json.loads(v) if isinstance(v, str) else v
+                  except urllib.error.HTTPError as e:
+                      if e.code in (400, 401, 403, 404):
+                          raise PermissionError(f"Supabase refused the public key (HTTP {e.code})")
+                      last = e
+                  except (LookupError, PermissionError):
+                      raise
+                  except Exception as e:
+                      last = e
+                  if attempt < 2:
+                      time.sleep(20)
+              raise ConnectionError(f"Supabase did not answer 3 tries ({type(last).__name__})")
+
+          state = None
           try:
-              state = json.loads(json.load(urllib.request.urlopen(req, timeout=30))[0]["value"])
+              state = read("live_state")
+          except (PermissionError, LookupError) as e:
+              remember("access", "Dashboard data unreadable",
+                       f"{e}. The Pi and its BYD service share their state through Supabase, so the night's "
+                       "charge-now and recovery may be off as well. A key may have been rotated, or Supabase's "
+                       "legacy keys removed.")
+          except ConnectionError as e:
+              remember("supabase", "Supabase unreachable",
+                       f"{e}. The Pi and its BYD service share their state through Supabase, so the night's "
+                       "charge-now and recovery may be off while this lasts.")
+
+          if state is not None:
               updated = datetime.fromisoformat(state["updated_at"])
-          except Exception as e:
-              print(f"Could not read the dashboard state ({type(e).__name__}); not treating that as a Pi fault.")
-              sys.exit(0)
-          age = (datetime.now(timezone.utc) - updated).total_seconds() / 60
-          print(f"Pi last published {age:.0f} min ago ({updated.isoformat()}).")
-          if age >= 20 and (age < 80 or age % 360 < 35):
-              print(f"::error title=Home Pi offline::The Pi has not updated the dashboard for {age:.0f} minutes. "
-                    "The chargers will not start at 22:59 and nothing is watching them. "
-                    "Check the Pi has power and Wi-Fi; it also restarts itself every day at 04:30.")
-              sys.exit(1)
+              age = (NOW - updated).total_seconds() / 60
+              print(f"Pi last published {age:.0f} min ago ({updated.isoformat()}).")
+              if age >= 20:
+                  remember("pi", "Home Pi offline",
+                           f"The Pi has not updated the dashboard for {age:.0f} minutes. The Easee will not be "
+                           "started at 22:58 and nothing is watching the chargers. Check the Pi has power and "
+                           "Wi-Fi; it also restarts itself every day at 13:03.", since=updated)
+              op = (state.get("easee") or {}).get("op_mode")
+              if age < 20 and op not in (None, 1):          # the BYD is plugged in at home
+                  try:
+                      byd = read("byd_vehicle")
+                      checked = datetime.fromisoformat(byd["checked_at"])
+                      byd_age = (NOW - checked).total_seconds() / 60
+                      print(f"BYD service last read the car {byd_age:.0f} min ago.")
+                      if byd_age >= 75:
+                          remember("byd", "BYD service stopped",
+                                   f"The BYD service has not read the car for {byd_age:.0f} minutes although it is "
+                                   "plugged in at home. It runs the 23:04 start and the night recovery: check "
+                                   "freephase-byd on the Pi.", since=checked)
+                  except Exception as e:
+                      remember("byd", "BYD service state unreadable",
+                               f"Could not read the BYD service's state ({type(e).__name__}: {e}).")
+
+          json.dump({k: v[3].isoformat() for k, v in problems.items()}, open("hb-state.json", "w"))
+          alerted = False
+          for kind, (minutes, title, message, began) in problems.items():
+              print(f"{title}: {message} (since {began.isoformat()}, {minutes:.0f} min)")
+              if minutes < 60 or minutes % 360 < 35:        # the first hour, then once every 6 hours
+                  print(f"::error title={title}::{message}")
+                  alerted = True
+          if not problems:
+              print("All good: the Pi, its BYD service and Supabase are working.")
+          sys.exit(1 if alerted else 0)
           PY
+      - name: Remember when each problem began
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: hb-state.json
+          key: hb-state-${{ github.run_id }}
