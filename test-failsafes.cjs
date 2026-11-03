@@ -132,7 +132,7 @@ assert.equal(el('preheat-skip').textContent, 'Skip next');
   run('bydPreheat = {schema:1, status:"needs_pin"}; renderPreheat(Date.parse("2026-11-01T19:00:00Z"))');
   assert.match(el('preheat-car').textContent,
     /Car pre-heat: 06:15–06:30, cabin 20°C, driver's seat heat, steering wheel heat, when it is below 15°C outside\. Waiting for your BYD PIN/);
-  run(`bydPreheat = {schema:1, status:"ready", last:{at:"2026-11-03T06:15:20Z", result:"started", outside_c:6, temp_source:"outside"}};
+  run(`bydPreheat = {schema:1, status:"ready", checked_at:new Date().toISOString(), last:{at:"2026-11-03T06:15:20Z", result:"started", outside_c:6, temp_source:"outside"}};
        renderPreheat(Date.parse("2026-11-03T07:00:00Z"))`);
   assert.match(el('preheat-car').textContent, /Ready\. Last: Tue 3 Nov 06:15, started \(6°C outside\)\./);
   assert.equal(el('preheat-car-toggle').textContent, 'Car pre-heat: on');
@@ -153,10 +153,13 @@ assert.equal(el('preheat-skip').textContent, 'Skip next');
   assert.equal(JSON.stringify([body2.byd_stop.enabled, body2.byd_stop.pct]), '[true,60]');
   assert.ok(Date.parse(body2.byd_stop.set_at), 'arming time recorded');
   assert.ok(body2.preheat && body2.preheat.car, 'arming keeps the pre-heat and car settings');
-  assert.match(el('byd-dc-status').textContent, /Armed: emails you at 60%/);
+  assert.match(el('byd-dc-status').textContent, /Saved for 60%, but not confirmed by the Pi yet/, 'until the BYD service confirms');
   const armedAt = body2.byd_stop.set_at;
-  run(`bydDcStop = {schema:1, status:"armed", pct:60, now_pct:52, charging:true, set_at:${JSON.stringify(armedAt)}}; renderBydDcStop()`);
-  assert.match(el('byd-dc-status').textContent, /now 52%, charging/);
+  run(`bydDcStop = {schema:1, status:"armed", pct:60, now_pct:52, charging:true, set_at:${JSON.stringify(armedAt)}, checked_at:new Date().toISOString()};
+       bydState = {vehicle_updated_at:"2026-11-02T14:20:00Z"}; renderBydDcStop()`);
+  assert.match(el('byd-dc-status').textContent, /Armed: emails you at 60% - now 52% \(read 14:20\), charging/);
+  run(`bydDcStop.checked_at = new Date(Date.now() - 10 * 60000).toISOString(); renderBydDcStop()`);
+  assert.match(el('byd-dc-status').textContent, /not confirmed by the Pi yet \(it last checked at/, 'a silent service is not shown as armed');
   run(`bydDcStop = {schema:1, status:"done", pct:60, set_at:${JSON.stringify(armedAt.replace('Z', '+00:00'))},
         last:{result:"notified", pct:61, target:60, at:"2026-11-02T14:32:00Z"}}; renderBydDcStop()`);
   assert.match(el('byd-dc-status').textContent, /Reached 61% at 14:32 - email sent/);

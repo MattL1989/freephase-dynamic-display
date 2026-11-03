@@ -1038,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-03 audit-fixes-v20";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-03 audit-fixes-v21";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3396,6 +3396,12 @@ const PREHEAT_DEFAULT = {enabled:true, days:[2], start:"05:30", end:"06:45", ski
 // The car part, run by the Pi's BYD service once the owner has entered the BYD PIN there.
 const PREHEAT_CAR_DEFAULT = {enabled:true, depart:"06:30", lead_min:15, cabin_c:20, seat:"high", wheel:true, below_c:15};
 let bydPreheat = null;            // settings.byd_preheat, published by the Pi's BYD service
+// "Ready." only if the BYD service has published recently (audit 2 Nov, dashboard-cloud-7). While the car is away the
+// service looks at the pre-heat about once a day, so the limit is generous: 26 hours.
+function preheatSeenRecently(st, now = Date.now()){
+  const t = Date.parse((st || {}).checked_at);
+  return Number.isFinite(t) && now - t < 26 * 3600000;
+}
 const PREHEAT_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 let preheatLive = null;
 let preheatDraft = null;          // day chips being edited, not yet saved
@@ -3457,7 +3463,8 @@ function renderPreheat(now){
     if (cfg.enabled && car.enabled){
       text = `Car pre-heat: ${at}–${car.depart}, cabin ${car.cabin_c}°C` + (car.seat !== "off" ? ", driver's seat heat" : "") +
         (car.wheel ? ", steering wheel heat" : "") + `, when it is below ${car.below_c}°C outside. ` +
-        (st.status === "ready" ? "Ready." : st.status === "pin_rejected" ? "BYD rejected the PIN - enter it again with byd_pin.py on the PC."
+        (st.status === "ready" ? (preheatSeenRecently(st) ? "Ready." : "Not confirmed by the Pi for over a day - its BYD service may be down.")
+          : st.status === "pin_rejected" ? "BYD rejected the PIN - enter it again with byd_pin.py on the PC."
           : "Waiting for your BYD PIN - run byd_pin.py on the PC.");
     }
     const last = st.last;
@@ -3553,7 +3560,19 @@ function renderBydDcStop(){
     return;
   }
   if (!arm){ st.textContent = "Not armed. " + how; return; }
-  const now = Number.isFinite(svc.now_pct) && svc.pct === arm.pct ? ` - now ${Math.round(svc.now_pct)}%${svc.charging ? ", charging" : ""}` : "";
+  // Only what the BYD service has confirmed, recently (audit 2 Nov, dashboard-cloud-7): a stopped service or a
+  // rejected arming must not look armed, and "now X%" says when the car was read.
+  const fresh = Number.isFinite(Date.parse(svc.checked_at)) && Date.now() - Date.parse(svc.checked_at) < 5 * 60000;
+  if (!sameArming || !fresh){
+    st.textContent = `Saved for ${arm.pct}%, but not confirmed by the Pi yet` +
+      (svc.checked_at && Number.isFinite(Date.parse(svc.checked_at)) ? ` (it last checked at ${fmtClock(svc.checked_at)})` : "") +
+      ". It checks every minute; if this stays, the Pi's BYD service may be down.";
+    return;
+  }
+  const readAt = bydState && bydState.vehicle_updated_at && Number.isFinite(Date.parse(bydState.vehicle_updated_at))
+    ? ` (read ${fmtClock(bydState.vehicle_updated_at)})` : "";
+  const now = Number.isFinite(svc.now_pct) && svc.pct === arm.pct
+    ? ` - now ${Math.round(svc.now_pct)}%${readAt}${svc.charging ? ", charging" : ""}` : "";
   st.textContent = svc.status === "at_home" ? `Armed for ${arm.pct}%, but the car is on the home Easee - it won't act here.`
     : `Armed: emails you at ${arm.pct}%${now}. Lapses 6 hours after arming.`;
 }
