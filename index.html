@@ -1038,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-01 charge-alert-v19";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-03 audit-fixes-v20";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1507,7 +1507,7 @@ function renderTariff(t){
 
   if (isFree || isOff){
     pill.className = "charging-pill on";
-    pill.textContent = isFree ? "Charging \u00b7 FREE" : "Charging \u00b7 Off-Peak";
+    pill.textContent = isFree ? "FREE \u00b7 chargers on" : "Off-peak \u00b7 chargers on";
   } else {
     pill.className = "charging-pill off";
     pill.textContent = "Holding until " + startH + ":00";
@@ -1777,12 +1777,18 @@ function modeClass(op){
   }
 }
 
+// A BYD holding itself at ~0.1 kW is still op 3 "Charging" (audit 2 Nov, dashboard-cloud-2): judge by the power.
+function easeeNotDrawing(easee){
+  return !!easee && easee.online !== false && easee.op_mode === 3 &&
+    Number.isFinite(easee.total_power_kw) && easee.total_power_kw < 0.5;
+}
+
 function easeeStatusFromLive(easee){
   if (!easee || easee.online === false) return {cls:"off", text:"Offline"};
   switch (easee.op_mode){
     case 1: return {cls:"off",       text:"Disconnected"};
     case 2: return {cls:"idle",      text:"Awaiting Start"};
-    case 3: return {cls:"charging",  text:"Charging"};
+    case 3: return easeeNotDrawing(easee) ? {cls:"idle", text:"Plugged in · not drawing"} : {cls:"charging", text:"Charging"};
     case 4: return {cls:"completed", text:"Completed"};
     case 5: return {cls:"error",     text:"Error"};
     case 6: return {cls:"idle",      text:"Ready"};
@@ -1994,6 +2000,9 @@ async function loadLiveState(){
     } else if (easeeOffline){
       pill.className = "charge-mode-pill disconnected";
       pill.textContent = easee.op_mode_text ? `Offline · last: ${easee.op_mode_text}` : "Offline";
+    } else if (easeeNotDrawing(easee)){
+      pill.className = "charge-mode-pill paused";
+      pill.textContent = "Plugged in · car not drawing";
     } else {
       pill.className = "charge-mode-pill " + modeClass(easee.op_mode);
       pill.textContent = easee.op_mode_text || "Loading…";
@@ -2130,6 +2139,7 @@ async function loadLiveState(){
     try { preheatLive = state.easee_preheat || null; renderPreheat(); } catch (e) {}
     updateDeviceGlance(state);
     renderDeviceAlerts(state);
+    try { ackOverrides(state); } catch (e) { /* a status line must never break the page */ }
     // Window text comes from the controller, not hardcoded here - these two captions have
     // drifted out of step with the actual rule twice now.
     // NB: not `t2` - that name is already taken at line ~1046 by the Easee phase current.
@@ -2963,6 +2973,19 @@ function renderDeviceAlerts(state){
       out.push(`<div class="device-alert volt">⚠ POWER16 breaker fault: ${escHtml(faults.join(", ").replace(/_/g, " "))}.` +
         `<small>The breaker has reported an alarm. Check the charger and the breaker before using it.</small></div>`);
     }
+    // An override left on Off silently stops the night's charge (audit 2 Nov, dashboard-cloud-8): say so
+    // while it lasts. These are the values the Pi itself reports using.
+    if (state.easee_override === "off"){
+      out.push(`<div class="device-alert volt">⚠ The Easee is set to OFF: the BYD will not charge, not even tonight.` +
+        `<small>Set it back to Auto when you want the Pi to charge it again.</small></div>`);
+    } else if (state.easee_override === "on"){
+      out.push(`<div class="device-alert peak">The Easee is set to ON: it charges at any price until you set it back to ` +
+        `Auto (the Pi does that by itself after 12 hours).</div>`);
+    }
+    if (state.breaker_override === "off"){
+      out.push(`<div class="device-alert volt">⚠ POWER16 is set to OFF: the car on it will not charge.` +
+        `<small>Set it to On (Puma) or Auto (Lexus) when you want it charging again.</small></div>`);
+    }
     // Easee faults (31 Oct: "EV requires ventilation" sat unnoticed from 22:59 until 03:15).
     const ez = state.easee || {}, ef = state.easee_fault || null;
     const restarts = ef && Array.isArray(ef.restarts) && ef.restarts.length
@@ -2995,7 +3018,7 @@ function renderDeviceAlerts(state){
       const bad = [chk.easee, chk.breaker].some(r => r && r.result === "problem");
       out.push(`<div class="device-alert ${bad ? "volt" : "info"}">${bad ? "⚠ " : ""}21:00 charger check at ${ukClock(chk.at)}: ` +
         `${line("Easee / BYD", chk.easee)}; ${line("POWER16", chk.breaker)}.` +
-        (bad ? `<small>Fix it before bed if you can - the chargers start as usual at 22:59.</small>` : "") + `</div>`);
+        (bad ? `<small>Fix it before bed if you can: the Easee comes on at 22:58 and the Pi starts the BYD at 23:01; POWER16 is on from 23:00.</small>` : "") + `</div>`);
     }
     if (peak && !checking && (easeePeak || brkDrawing)){
       const which = [easeePeak && "Easee", brkDrawing && "POWER16"].filter(Boolean).join(" and ");
@@ -3145,8 +3168,38 @@ async function loadOverrides(){
   } catch(e){ console.error("overrides fetch failed", e); }
 }
 
+// What was saved, until the Pi reports using it (audit 2 Nov, dashboard-cloud-7: show what the Pi applied,
+// not just what was requested).
+const overrideSaved = { easee: null, breaker: null };
+const OFF_WARNING = {
+  easee: "Switch the Easee OFF? The BYD will not charge at all - not even tonight - until you set it back to Auto.",
+  breaker: "Switch POWER16 OFF? The car on it stops charging. The Puma's charger faults if its power is cut while " +
+           "it is plugged in." };
+
+function ackOverrides(state){
+  for (const device of ["easee", "breaker"]){
+    const saved = overrideSaved[device];
+    const el = document.getElementById(OVERRIDE_STATUS_EL[device]);
+    if (!saved || !el) continue;
+    const reported = Date.parse(state.updated_at || "");
+    if (state[OVERRIDE_KEY[device]] === saved.mode && reported >= saved.at - 5000){
+      el.className = "override-status ok";
+      el.textContent = `${saved.text} · applied by the Pi at ${ukClock(state.updated_at)}`;
+      overrideSaved[device] = null;
+    } else if (Date.now() - saved.at > 120000){
+      el.className = "override-status err";
+      el.textContent = `${saved.text} · saved, but the Pi has not applied it yet` +
+        (state.updated_at ? ` (it last reported at ${ukClock(state.updated_at)})` : "");
+    }
+  }
+}
+
 async function setOverride(device, mode){
   const statusEl = document.getElementById(OVERRIDE_STATUS_EL[device]);
+  if (mode === "off" && currentOverride(device) !== "off" && typeof confirm === "function" && !confirm(OFF_WARNING[device])){
+    paintOverride(device, currentOverride(device));
+    return;
+  }
   overrideBusy[device] = true;
   paintOverride(device, mode);                    // optimistic highlight
   statusEl.className = "override-status"; statusEl.textContent = "Saving…";
@@ -3157,7 +3210,8 @@ async function setOverride(device, mode){
       if (device === "easee") currentEaseeOverride = mode; else currentBreakerOverride = mode;
       const label = mode === "auto" ? "following price automation" : (mode === "on" ? "forced ON" : "forced OFF");
       statusEl.className = "override-status ok";
-      statusEl.textContent = `Saved · ${name} ${label} (Pi applies within ~30s)`;
+      statusEl.textContent = `Saved · ${name} ${label} - waiting for the Pi to apply it (about 30 s)`;
+      overrideSaved[device] = { mode, at: Date.now(), text: `${name} ${label}` };
     } else {
       statusEl.className = "override-status err";
       statusEl.textContent = reasonText(r.reason);
@@ -3291,6 +3345,12 @@ async function loadSchedules(){
 
 async function saveSchedule(device, body, okMsg){
   const statusEl = document.getElementById(`${device}-sched-status`);
+  if (!schedLoaded){
+    // Writing before the first read would wipe what else is stored with it, e.g. an armed public-charge
+    // alert (audit 2 Nov, dashboard-cloud-6). savePreheat and saveDcStop already wait the same way.
+    statusEl.className = "sched-status err"; statusEl.textContent = "Still loading - try again in a moment.";
+    return;
+  }
   statusEl.className = "sched-status"; statusEl.textContent = "Saving…";
   // Keep what else is stored with the one-shot window (the Easee's weekly pre-heat top-up).
   body = Object.assign({}, schedState[device] || {}, body);
@@ -3574,6 +3634,7 @@ async function init(){
     if (!document.hidden) checkForUpdate();
   });
   setInterval(ageTick, 30_000);
+  loadLiveState();                             // first: a slow settings read must not hold up the live view
   await loadOverrides();
   setupPerksControls();
   setupPerksForwarding();
@@ -3588,7 +3649,7 @@ async function init(){
   } catch (e) { console.error("charge stop setup failed", e); }
   loadBydDcStop();
   setInterval(loadBydDcStop, 30_000);
-  loadLiveState();                             // tariff AND device state both come from live_state
+  loadLiveState();                             // again, now the overrides and schedules are known
   loadBydState();
   setInterval(loadBydState, 60_000);
   setInterval(renderByd, 30_000);               // age cached car readings even if the network fails
