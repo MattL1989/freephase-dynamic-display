@@ -543,6 +543,8 @@
   .device-alert small{display:block;font-weight:500;color:var(--text-dim);margin-top:4px}
   .device-alert.info{background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.45);color:#9beefa}
   .preheat-days{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+  .preheat-opts{display:grid;grid-template-columns:auto auto;gap:8px 10px;align-items:center;font-size:13px;color:var(--text-dim)}
+  .preheat-opts select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px}
   .day-chip{border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:999px;
     padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;min-width:48px;min-height:40px}
   .day-chip.on{background:rgba(34,211,238,0.16);border-color:rgba(34,211,238,0.55);color:var(--cyan)}
@@ -770,28 +772,27 @@
       </details>
       <details class="sched" id="easee-preheat">
         <summary class="sched-head">
-          <span class="sched-title">Pre-heat top-up</span>
-          <span class="sched-state" id="preheat-state">Tue · 05:30 – 06:45</span>
+          <span class="sched-title">Pre-heat</span>
+          <span class="sched-state" id="preheat-state">Off</span>
         </summary>
         <div class="sched-content">
-          <p class="sched-hint">Every week on these days the Easee stays available at any price, so the BYD can pre-heat from the mains and keep its battery full until you leave. Starting before 06:00 means the Easee's own 06:00 cut-off never interrupts the charge. The POWER16 is not affected.</p>
+          <p class="sched-hint">Warms the BYD for when you leave, on the days you pick. Nothing runs unless you set it here, and the car has to be plugged in. The Easee stays on from about an hour before you leave until 15 minutes after, at any price, and the Pi tops the battery back up after the heating.</p>
           <div class="preheat-days" id="preheat-days" role="group" aria-label="Pre-heat days"></div>
           <div class="sched-body">
             <div class="wheel-block">
-              <div class="wheel-label">From</div>
+              <div class="wheel-label">I leave at</div>
               <div class="wheels">
-                <div class="wheel" id="preheat-start-h"></div>
+                <div class="wheel" id="preheat-leave-h"></div>
                 <div class="wheel-sep">:</div>
-                <div class="wheel" id="preheat-start-m"></div>
+                <div class="wheel" id="preheat-leave-m"></div>
               </div>
             </div>
-            <div class="wheel-block">
-              <div class="wheel-label">Until</div>
-              <div class="wheels">
-                <div class="wheel" id="preheat-end-h"></div>
-                <div class="wheel-sep">:</div>
-                <div class="wheel" id="preheat-end-m"></div>
-              </div>
+            <div class="preheat-opts">
+              <label for="preheat-lead">Heat for</label><select id="preheat-lead"></select>
+              <label for="preheat-cabin">Cabin</label><select id="preheat-cabin"></select>
+              <label for="preheat-seat">Driver's seat</label><select id="preheat-seat"></select>
+              <label for="preheat-wheel">Steering wheel</label><select id="preheat-wheel"></select>
+              <label for="preheat-below">Only when colder than</label><select id="preheat-below"></select>
             </div>
             <div class="sched-actions">
               <button type="button" class="sched-btn arm" id="preheat-save">Save</button>
@@ -801,7 +802,6 @@
           </div>
           <p class="sched-hint" id="preheat-note"></p>
           <p class="sched-hint" id="preheat-car"></p>
-          <div class="sched-actions"><button type="button" class="sched-btn cancel" id="preheat-car-toggle">Car pre-heat: on</button></div>
           <div class="sched-status" id="preheat-status" role="status"></div>
         </div>
       </details>
@@ -1038,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-03 audit-fixes-v21";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-03 preheat-yours-v22";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3388,13 +3388,16 @@ async function cancelSchedule(device){
 }
 
 // PRE-HEAT TOP-UP.
-// Weekly window in which the Pi keeps the Easee available at any price, so the BYD can pre-heat from
-// the mains and refill what it used (owner, 1 Nov 2026). Stored inside settings.easee_schedule as
-//   preheat: {enabled, days:[1-7, Mon=1], start:"HH:MM", end:"HH:MM", skip:"YYYY-MM-DD"|null}
+// What Matt sets himself (3 Nov 2026): the days, when he leaves, and the heating. Nothing runs until he does.
+// Stored inside settings.easee_schedule as
+//   preheat: {enabled, days:[1-7, Mon=1], start:"HH:MM", end:"HH:MM", skip:"YYYY-MM-DD"|null,
+//             car:{enabled, depart:"HH:MM", lead_min, cabin_c, seat, wheel, below_c}}
+// start/end are the window in which the Pi keeps the Easee available at any price; they follow the leave time.
 // The Pi publishes what it is actually using as live_state.easee_preheat (+ active, next_start/end).
-const PREHEAT_DEFAULT = {enabled:true, days:[2], start:"05:30", end:"06:45", skip:null};   // leaves ~06:30, full battery
-// The car part, run by the Pi's BYD service once the owner has entered the BYD PIN there.
+const PREHEAT_DEFAULT = {enabled:false, days:[], start:"05:30", end:"06:45", skip:null};
+// What the controls start on, and the car part run by the Pi's BYD service once the owner has entered the BYD PIN.
 const PREHEAT_CAR_DEFAULT = {enabled:true, depart:"06:30", lead_min:15, cabin_c:20, seat:"high", wheel:true, below_c:15};
+const PREHEAT_ALWAYS_C = 30;      // "Only when colder than: any temperature"
 let bydPreheat = null;            // settings.byd_preheat, published by the Pi's BYD service
 // "Ready." only if the BYD service has published recently (audit 2 Nov, dashboard-cloud-7). While the car is away the
 // service looks at the pre-heat about once a day, so the limit is generous: 26 hours.
@@ -3412,7 +3415,7 @@ function preheatSaved(){
   // minute behind, and is only the fallback (it also carries the default / last-remembered window).
   const p = ((typeof schedState !== "undefined" && schedState.easee) || {}).preheat || preheatLive;
   if (!p || typeof p !== "object") return Object.assign({}, PREHEAT_DEFAULT);
-  const out = {enabled: p.enabled === true, days: Array.isArray(p.days) ? p.days.slice() : [2],
+  const out = {enabled: p.enabled === true, days: Array.isArray(p.days) ? p.days.slice() : [],
                start: p.start || "05:30", end: p.end || "06:45", skip: p.skip || null};
   if (p.car && typeof p.car === "object") out.car = Object.assign({}, p.car);   // kept on every save
   return out;
@@ -3426,13 +3429,23 @@ function preheatDayText(days){
   return d.map(n => PREHEAT_DAYS[n - 1]).join(", ") || "No days";
 }
 function preheatSkipping(cfg, now){ return !!(cfg.skip && cfg.skip >= ukDateKey(now || Date.now())); }
+function preheatMin(hhmm){ const [h, m] = String(hhmm).split(":").map(Number); return h * 60 + m; }
+function preheatClock(min){ return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`; }
+// The Easee's window follows the leave time: open 45 minutes before the heating starts, closed 15 minutes after he
+// leaves (06:30 with 15 minutes' heating: 05:30-06:45).
+function preheatWindow(depart, lead){
+  const d = preheatMin(depart);
+  return {start: preheatClock(Math.max(0, d - lead - 45)), end: preheatClock(Math.min(1439, d + 15))};
+}
+function preheatColderText(below){ return Number(below) >= PREHEAT_ALWAYS_C ? "at any temperature" : `when it is below ${below}°C`; }
 function renderPreheat(now){
   const cfg = preheatSaved(), live = preheatLive || {};
   const pill = document.getElementById("preheat-state");
   if (!pill) return;
+  const car = Object.assign({}, PREHEAT_CAR_DEFAULT, cfg.car || {});
   if (!cfg.enabled){ pill.className = "sched-state"; pill.textContent = "Off"; }
-  else if (live.active){ pill.className = "sched-state active"; pill.textContent = `On now · until ${cfg.end}`; }
-  else { pill.className = "sched-state armed"; pill.textContent = `${preheatDayText(cfg.days)} · ${cfg.start} – ${cfg.end}`; }
+  else if (live.active){ pill.className = "sched-state active"; pill.textContent = `On now · leave ${car.depart}`; }
+  else { pill.className = "sched-state armed"; pill.textContent = `${preheatDayText(cfg.days)} · leave ${car.depart}`; }
   const sel = preheatDraft || cfg.days;
   const box = document.getElementById("preheat-days");
   if (box) box.innerHTML = PREHEAT_DAYS.map((n, i) =>
@@ -3444,28 +3457,28 @@ function renderPreheat(now){
     skip.disabled = !cfg.enabled || (!skipping && !live.next_start);
   }
   if (toggle) toggle.textContent = cfg.enabled ? "Turn off" : "Turn on";
+  const at = preheatClock(Math.max(0, preheatMin(car.depart) - (Number(car.lead_min) || 15)));
   const note = document.getElementById("preheat-note");
   if (note){
     const peak = Number(((typeof currentTariff !== "undefined" && currentTariff) || {}).peak_price_p) || 29.759;
     const nxt = cfg.enabled && live.next_start
-      ? `Next: ${new Date(live.next_start).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"})} ${fmtClock(live.next_start)}. ` : "";
+      ? `Next: ${new Date(live.next_start).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"})}, heating ${at}–${car.depart}. ` : "";
     note.textContent = (skipping ? `Skipping ${fmtSkip(cfg.skip)}. ` : "") + nxt +
       `Peak rate ${peak.toFixed(2)}p/kWh: a 20-minute pre-heat is roughly 1 kWh (≈${Math.round(peak)}p). ` +
       `If the battery also needs filling the Easee can draw up to 7 kW (≈£${(7 * peak / 100).toFixed(2)} an hour).`;
   }
-  const carEl = document.getElementById("preheat-car"), carBtn = document.getElementById("preheat-car-toggle");
-  const car = Object.assign({}, PREHEAT_CAR_DEFAULT, cfg.car || {});
+  const carEl = document.getElementById("preheat-car");
   if (carEl){
     const st = bydPreheat || {};
-    const dep = String(car.depart).split(":").map(Number), startMin = dep[0] * 60 + dep[1] - (Number(car.lead_min) || 15);
-    const at = `${String(Math.floor(startMin / 60)).padStart(2, "0")}:${String(startMin % 60).padStart(2, "0")}`;
-    let text = "Car pre-heat: off.";
-    if (cfg.enabled && car.enabled){
-      text = `Car pre-heat: ${at}–${car.depart}, cabin ${car.cabin_c}°C` + (car.seat !== "off" ? ", driver's seat heat" : "") +
-        (car.wheel ? ", steering wheel heat" : "") + `, when it is below ${car.below_c}°C outside. ` +
+    let text = "Off. Pick your days and when you leave, then Save.";
+    if (cfg.enabled){
+      const seat = car.seat === "off" ? "" : `, driver's seat heat (${car.seat})`;
+      text = `Heating: ${at}–${car.depart}, cabin ${car.cabin_c}°C${seat}` + (car.wheel ? ", steering wheel heat" : "") +
+        `, ${preheatColderText(car.below_c)}. ` +
         (st.status === "ready" ? (preheatSeenRecently(st) ? "Ready." : "Not confirmed by the Pi for over a day - its BYD service may be down.")
           : st.status === "pin_rejected" ? "BYD rejected the PIN - enter it again with byd_pin.py on the PC."
-          : "Waiting for your BYD PIN - run byd_pin.py on the PC.");
+          : st.status === "needs_pin" ? "Waiting for your BYD PIN - run byd_pin.py on the PC."
+          : "Saved - waiting for the Pi to confirm (about a minute).");
     }
     const last = st.last;
     if (last && last.at && !isNaN(new Date(last.at))){
@@ -3477,11 +3490,17 @@ function renderPreheat(now){
     }
     carEl.textContent = text;
   }
-  if (carBtn){ carBtn.textContent = car.enabled ? "Car pre-heat: on" : "Car pre-heat: off"; carBtn.disabled = !cfg.enabled; }
-  if (!preheatWheelsSynced && document.getElementById("preheat-start-h") && document.getElementById("preheat-start-h")._values){
-    const [sh, sm] = cfg.start.split(":"), [eh, em] = cfg.end.split(":");
-    setWheelTo("preheat-start-h", sh); setWheelTo("preheat-start-m", sm);
-    setWheelTo("preheat-end-h", eh); setWheelTo("preheat-end-m", em);
+  // The controls show what is saved, once it is known (never overwriting what he is in the middle of choosing).
+  const known = (typeof schedLoaded !== "undefined" && schedLoaded) || !!preheatLive;
+  if (!preheatWheelsSynced && known && document.getElementById("preheat-leave-h") && document.getElementById("preheat-leave-h")._values){
+    const [lh, lm] = car.depart.split(":");
+    setWheelTo("preheat-leave-h", lh);
+    setWheelTo("preheat-leave-m", String(Math.floor(Number(lm) / 5) * 5).padStart(2, "0"));
+    document.getElementById("preheat-lead").value = String(car.lead_min);
+    document.getElementById("preheat-cabin").value = String(car.cabin_c);
+    document.getElementById("preheat-seat").value = car.seat;
+    document.getElementById("preheat-wheel").value = car.wheel ? "on" : "off";
+    document.getElementById("preheat-below").value = String(car.below_c);
     preheatWheelsSynced = true;
   }
 }
@@ -3507,13 +3526,17 @@ async function savePreheat(next, okMsg){
   return r;
 }
 function preheatSave(){
-  const start = `${wheelValue("preheat-start-h")}:${wheelValue("preheat-start-m")}`;
-  const end = `${wheelValue("preheat-end-h")}:${wheelValue("preheat-end-m")}`;
+  const depart = `${wheelValue("preheat-leave-h")}:${wheelValue("preheat-leave-m")}`;
+  const lead = Number(document.getElementById("preheat-lead").value);
   const days = (preheatDraft || preheatSaved().days).slice().sort((a, b) => a - b);
   const st = document.getElementById("preheat-status");
-  if (start >= end){ st.className = "sched-status err"; st.textContent = "The end must be after the start, on the same day."; return null; }
   if (!days.length){ st.className = "sched-status err"; st.textContent = "Pick at least one day, or use Turn off."; return null; }
-  return savePreheat({enabled:true, days, start, end, skip: preheatSaved().skip}, `Pre-heat top-up: ${preheatDayText(days)} ${start} – ${end}`);
+  if (preheatMin(depart) - lead < 0){ st.className = "sched-status err"; st.textContent = "The heating would start the day before: pick a later time or a shorter heat."; return null; }
+  const car = {enabled:true, depart, lead_min:lead, cabin_c:Number(document.getElementById("preheat-cabin").value),
+               seat:document.getElementById("preheat-seat").value, wheel:document.getElementById("preheat-wheel").value === "on",
+               below_c:Number(document.getElementById("preheat-below").value)};
+  const w = preheatWindow(depart, lead);
+  return savePreheat({enabled:true, days, start:w.start, end:w.end, skip: preheatSaved().skip, car}, `Pre-heat set: ${preheatDayText(days)}, leave ${depart}`);
 }
 function preheatSkip(){
   const cfg = preheatSaved(), live = preheatLive || {};
@@ -3521,11 +3544,6 @@ function preheatSkip(){
   if (!live.next_start) return null;
   const day = ukDateKey(live.next_start);
   return savePreheat(Object.assign({}, cfg, {skip:day}), live.active ? "Stopped for today" : `Skipping ${fmtSkip(day)}`);
-}
-function preheatCarToggle(){
-  const cfg = preheatSaved(), car = Object.assign({}, PREHEAT_CAR_DEFAULT, cfg.car || {});
-  car.enabled = !car.enabled;
-  return savePreheat(Object.assign({}, cfg, {car}), car.enabled ? "Car pre-heat turned on" : "Car pre-heat turned off");
 }
 // PUBLIC CHARGE ALERT AT X%. The car cannot be stopped remotely (BYD's stop command is a no-op and a
 // remote double unlock did not stop a DC charge - tested 1 Nov 2026), so the Pi's BYD service emails the
@@ -3617,11 +3635,26 @@ async function loadBydPreheat(){
 }
 function preheatToggle(){
   const cfg = preheatSaved();
-  return savePreheat(Object.assign({}, cfg, {enabled: !cfg.enabled}), cfg.enabled ? "Pre-heat top-up turned off" : "Pre-heat top-up turned on");
+  if (!cfg.enabled && !cfg.days.length){
+    const st = document.getElementById("preheat-status");
+    st.className = "sched-status err"; st.textContent = "Pick your days and when you leave, then Save.";
+    return null;
+  }
+  return savePreheat(Object.assign({}, cfg, {enabled: !cfg.enabled}), cfg.enabled ? "Pre-heat turned off" : "Pre-heat turned on");
 }
 function setupPreheat(){
-  buildWheel("preheat-start-h", HOURS, "05"); buildWheel("preheat-start-m", MINUTES, "30");
-  buildWheel("preheat-end-h", HOURS, "06");   buildWheel("preheat-end-m", MINUTES, "45");
+  buildWheel("preheat-leave-h", HOURS, "06"); buildWheel("preheat-leave-m", MINUTES, "30");
+  const fill = (id, opts, value) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+    sel.value = String(value);
+  };
+  const d = PREHEAT_CAR_DEFAULT;
+  fill("preheat-lead", [10, 15, 20, 25, 30].map(m => [m, `${m} minutes`]), d.lead_min);
+  fill("preheat-cabin", Array.from({length:15}, (_, i) => [17 + i, `${17 + i}°C`]), d.cabin_c);
+  fill("preheat-seat", [["off", "Off"], ["low", "Low"], ["high", "High"]], d.seat);
+  fill("preheat-wheel", [["on", "On"], ["off", "Off"]], d.wheel ? "on" : "off");
+  fill("preheat-below", [[5, "5°C"], [10, "10°C"], [15, "15°C"], [20, "20°C"], [PREHEAT_ALWAYS_C, "Any temperature"]], d.below_c);
   const details = document.getElementById("easee-preheat");
   details.addEventListener("toggle", () => {
     if (!details.open) return;
@@ -3636,7 +3669,6 @@ function setupPreheat(){
   document.getElementById("preheat-save").addEventListener("click", preheatSave);
   document.getElementById("preheat-skip").addEventListener("click", preheatSkip);
   document.getElementById("preheat-toggle").addEventListener("click", preheatToggle);
-  document.getElementById("preheat-car-toggle").addEventListener("click", preheatCarToggle);
   renderPreheat();
 }
 // END PRE-HEAT.

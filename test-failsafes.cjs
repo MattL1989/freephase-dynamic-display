@@ -24,7 +24,7 @@ run(slice('// POWER PERKS.', '// END POWER PERKS.'));
 run(slice('function fmtClock', 'function freeDay'));
 run(slice('// DEVICES AT A GLANCE', '\nfunction renderImmersionUsage'));
 run('var SCHED_KEY = { easee:"easee_schedule", breaker:"breaker_schedule" }; var schedState = { easee:null, breaker:null }; var currentTariff = {peak_price_p: 29.759}; var schedLoaded = true;');
-run('function renderSchedState(){} function setWheelTo(){} function wheelValue(id){ return {"preheat-start-h":"07","preheat-start-m":"15","preheat-end-h":"08","preheat-end-m":"45"}[id]; }');
+run('function renderSchedState(){} function setWheelTo(){} function wheelValue(id){ return {"preheat-leave-h":"07","preheat-leave-m":"15"}[id]; }');
 run(slice('async function saveSchedule', 'async function armSchedule'));
 run(slice('// PRE-HEAT TOP-UP.', '// END PRE-HEAT.'));
 
@@ -80,13 +80,22 @@ assert.match(a, /POWER16 was not charging, so the Pi switched it off and on/);
 
 // ---- the pre-heat control
 run('renderPreheat()');
-assert.equal(el('preheat-state').textContent, 'Tue · 05:30 – 06:45', 'default before the Pi publishes');
-run(`preheatLive = {enabled:true, days:[2], start:"07:00", end:"08:30", skip:null, active:false,
-  next_start:"2026-11-03T07:00:00+00:00", next_end:"2026-11-03T08:30:00+00:00"}; renderPreheat(Date.parse("2026-11-01T19:00:00Z"))`);
+assert.equal(el('preheat-state').textContent, 'Off', 'nothing runs until Matt sets it');
+assert.match(el('preheat-car').textContent, /^Off\. Pick your days and when you leave, then Save\./);
+assert.doesNotMatch(el('preheat-days').innerHTML, /aria-pressed="true"/, 'no day is ticked for him');
+run(`preheatLive = {enabled:true, days:[2], start:"06:15", end:"07:30", skip:null, active:false,
+  car:{enabled:true, depart:"07:15", lead_min:15, cabin_c:21, seat:"low", wheel:false, below_c:10},
+  next_start:"2026-11-03T06:15:00+00:00", next_end:"2026-11-03T07:30:00+00:00"}; renderPreheat(Date.parse("2026-11-01T19:00:00Z"))`);
+assert.equal(el('preheat-state').textContent, 'Tue · leave 07:15');
 assert.match(el('preheat-days').innerHTML, /data-day="2" aria-pressed="true">Tue/);
-assert.match(el('preheat-note').textContent, /Next: Tue 3 Nov 07:00/);
+assert.match(el('preheat-note').textContent, /Next: Tue 3 Nov, heating 07:00–07:15/);
 assert.match(el('preheat-note').textContent, /≈£2\.08 an hour/);
 assert.equal(el('preheat-skip').textContent, 'Skip next');
+// the Easee's window follows the leave time
+assert.equal(JSON.stringify(run('preheatWindow("06:30", 15)')), JSON.stringify({start:"05:30", end:"06:45"}));
+assert.equal(JSON.stringify(run('preheatWindow("00:30", 30)')), JSON.stringify({start:"00:00", end:"00:45"}));
+assert.equal(JSON.stringify(run('preheatWindow("23:55", 10)')), JSON.stringify({start:"23:00", end:"23:59"}));
+for (const [id, v] of [['preheat-lead','15'],['preheat-cabin','21'],['preheat-seat','low'],['preheat-wheel','off'],['preheat-below','10']]) el(id).value = v;
 
 (async () => {
   // nothing is saved before the stored schedule has loaded (it would wipe an armed one-shot)
@@ -102,9 +111,10 @@ assert.equal(el('preheat-skip').textContent, 'Skip next');
   await run('preheatSave()');
   let [key, body] = writes.at(-1);
   assert.equal(key, 'easee_schedule');
+  const CAR = {enabled:true, depart:'07:15', lead_min:15, cabin_c:21, seat:'low', wheel:false, below_c:10};
   assert.equal(JSON.stringify(body), JSON.stringify({enabled:true, start:'01:00', end:'03:00', fired:false,
-    preheat: {enabled:true, days:[2, 4], start:'07:15', end:'08:45', skip:null}}));
-  assert.equal(el('preheat-state').textContent, 'Tue, Thu · 07:15 – 08:45');
+    preheat: {enabled:true, days:[2, 4], start:'06:15', end:'07:30', skip:null, car:CAR}}));
+  assert.equal(el('preheat-state').textContent, 'Tue, Thu · leave 07:15');
   // skip the next one, then undo
   await run('preheatSkip()');
   assert.equal(writes.at(-1)[1].preheat.skip, '2026-11-03');
@@ -116,7 +126,7 @@ assert.equal(el('preheat-skip').textContent, 'Skip next');
   assert.match(el('preheat-note').textContent, /Skipping Tue 3 Nov/);
   // turning it off keeps the days and times
   await run('preheatToggle()');
-  assert.equal(JSON.stringify(writes.at(-1)[1].preheat), JSON.stringify({enabled:false, days:[2, 4], start:'07:15', end:'08:45', skip:'2026-11-03'}));
+  assert.equal(JSON.stringify(writes.at(-1)[1].preheat), JSON.stringify({enabled:false, days:[2, 4], start:'06:15', end:'07:30', skip:'2026-11-03', car:CAR}));
   assert.equal(el('preheat-state').textContent, 'Off');
   // a one-shot save keeps the pre-heat
   await run('saveSchedule("easee", {enabled:false, start:"01:00", end:"03:00", fired:false}, "Schedule cancelled")');
@@ -126,22 +136,34 @@ assert.equal(el('preheat-skip').textContent, 'Skip next');
   run('preheatDraft = []'); await run('preheatSave()');
   assert.equal(writes.length, n);
   assert.match(el('preheat-status').textContent, /at least one day/);
-  // ---- the car part (BYD service status + on/off)
+  // a leave time so early the heating would start the day before is refused
+  const m = writes.length;
+  run('preheatDraft = [2]; wheelValue = id => ({"preheat-leave-h":"00","preheat-leave-m":"05"})[id]');
+  await run('preheatSave()');
+  assert.equal(writes.length, m);
+  assert.match(el('preheat-status').textContent, /the day before/);
+  run('wheelValue = id => ({"preheat-leave-h":"07","preheat-leave-m":"15"})[id]; preheatDraft = null');
+  // turning on with nothing set does nothing
+  run('schedState.easee = {enabled:false, start:"01:00", end:"05:00", fired:false, preheat:{enabled:false, days:[]}}');
+  const q = writes.length;
+  await run('preheatToggle()');
+  assert.equal(writes.length, q);
+  assert.match(el('preheat-status').textContent, /Pick your days/);
+  // ---- what the Pi says about it
   run(`schedState.easee = {enabled:false, start:"01:00", end:"05:00", fired:false,
         preheat:{enabled:true, days:[2], start:"05:30", end:"06:45", skip:null}}`);
   run('bydPreheat = {schema:1, status:"needs_pin"}; renderPreheat(Date.parse("2026-11-01T19:00:00Z"))');
   assert.match(el('preheat-car').textContent,
-    /Car pre-heat: 06:15–06:30, cabin 20°C, driver's seat heat, steering wheel heat, when it is below 15°C outside\. Waiting for your BYD PIN/);
+    /^Heating: 06:15–06:30, cabin 20°C, driver's seat heat \(high\), steering wheel heat, when it is below 15°C\. Waiting for your BYD PIN/);
+  run('bydPreheat = {schema:1, status:"off"}; renderPreheat(Date.parse("2026-11-01T19:00:00Z"))');
+  assert.match(el('preheat-car').textContent, /Saved - waiting for the Pi to confirm/, 'just saved: not a PIN problem');
   run(`bydPreheat = {schema:1, status:"ready", checked_at:new Date().toISOString(), last:{at:"2026-11-03T06:15:20Z", result:"started", outside_c:6, temp_source:"outside"}};
        renderPreheat(Date.parse("2026-11-03T07:00:00Z"))`);
   assert.match(el('preheat-car').textContent, /Ready\. Last: Tue 3 Nov 06:15, started \(6°C outside\)\./);
-  assert.equal(el('preheat-car-toggle').textContent, 'Car pre-heat: on');
-  await run('preheatCarToggle()');
-  const car = writes.at(-1)[1].preheat.car;
-  assert.equal(JSON.stringify(car), JSON.stringify({enabled:false, depart:"06:30", lead_min:15, cabin_c:20, seat:"high", wheel:true, below_c:15}));
-  assert.match(el('preheat-car').textContent, /^Car pre-heat: off\./);
+  run(`schedState.easee.preheat.car = {enabled:true, depart:"06:30", lead_min:15, cabin_c:20, seat:"off", wheel:false, below_c:30}; renderPreheat(Date.parse("2026-11-03T07:00:00Z"))`);
+  assert.match(el('preheat-car').textContent, /^Heating: 06:15–06:30, cabin 20°C, at any temperature\./);
   await run('saveSchedule("easee", {enabled:false, start:"01:00", end:"03:00", fired:false}, "Schedule cancelled")');
-  assert.equal(writes.at(-1)[1].preheat.car.enabled, false, 'a one-shot save keeps the car settings');
+  assert.equal(writes.at(-1)[1].preheat.car.below_c, 30, 'a one-shot save keeps the car settings');
   // ---- stop a public charge at X%
   const sel = el('byd-dc-pct'); sel.options = []; sel.appendChild = function(o){ this.options.push(o); };
   run('renderBydDcStop()');
