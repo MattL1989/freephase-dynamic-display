@@ -93,5 +93,18 @@ run(slice('function preheatNextText', 'function preheatColderText'));
   assert.ok(html.includes("if the battery isn't full, the car charges during that time at the peak rate, so it is full when you leave"));
   assert.ok(html.includes("If the battery isn't full, the car also charges while the window is open, at up to 7 kW"));
   assert.ok(!html.includes('tops the battery back up after the heating'), 'the old wording is gone');
+  // ---- C5: controls follow a save made on another device unless he is changing them here
+  run(slice('let preheatWheelsSynced', 'function preheatSaved'));
+  const car = JSON.stringify({depart: '06:30', lead_min: 15});
+  assert.equal(run('preheatNeedsSync({depart: "06:30", lead_min: 15})'), true, 'never shown yet');
+  run(`preheatWheelsSynced = true; preheatSyncedFrom = ${JSON.stringify(car)}; preheatTouched = false`);
+  assert.equal(run('preheatNeedsSync({depart: "06:30", lead_min: 15})'), false, 'already showing it');
+  assert.equal(run('preheatNeedsSync({depart: "17:30", lead_min: 15})'), true, 'saved on another device: shown here too');
+  run('preheatTouched = true');
+  assert.equal(run('preheatNeedsSync({depart: "17:30", lead_min: 15})'), false, 'not while he is changing them here');
+  // ---- C5: honest wording, and no zoom on a phone
+  assert.ok(html.includes("Heating already running in the car carries on until its time is up - stop it in the BYD app"));
+  assert.ok(html.includes('"Stop today\'s window"'));
+  assert.match(html, /\.preheat-opts select\{[^}]*font-size:16px/);
   console.log('audit 4 Nov dashboard tests OK');
 })().catch(e => { console.error(e); process.exit(1); });

@@ -544,7 +544,7 @@
   .device-alert.info{background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.45);color:#9beefa}
   .preheat-days{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
   .preheat-opts{display:grid;grid-template-columns:auto auto;gap:8px 10px;align-items:center;font-size:13px;color:var(--text-dim)}
-  .preheat-opts select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13px}
+  .preheat-opts select{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:16px}
   .day-chip{border:1px solid var(--border);background:transparent;color:var(--text-dim);border-radius:999px;
     padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;min-width:48px;min-height:40px}
   .day-chip.on{background:rgba(34,211,238,0.16);border-color:rgba(34,211,238,0.55);color:var(--cyan)}
@@ -1038,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-04 audit-b1-c1-v23";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-04 audit-c5-v24";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3429,6 +3429,13 @@ const PREHEAT_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 let preheatLive = null;
 let preheatDraft = null;          // day chips being edited, not yet saved
 let preheatWheelsSynced = false;
+let preheatTouched = false;       // he has changed a control here since it last showed what is saved (C5)
+let preheatSyncedFrom = null;     // the saved car settings the controls last showed
+// The controls show what is saved - also after another device saved since (audit 3 Nov C5: they went stale and Save
+// wrote the mix), unless he is in the middle of changing them here.
+function preheatNeedsSync(car){
+  return !preheatWheelsSynced || (!preheatTouched && JSON.stringify(car) !== preheatSyncedFrom);
+}
 
 function preheatSaved(){
   // The stored row first (updated the moment a save lands); the Pi's published copy runs up to a
@@ -3482,7 +3489,7 @@ function renderPreheat(now){
   const skipping = preheatSkipping(cfg, now);
   const skip = document.getElementById("preheat-skip"), toggle = document.getElementById("preheat-toggle");
   if (skip){
-    skip.textContent = skipping ? "Undo skip" : live.active ? "Stop today" : "Skip next";
+    skip.textContent = skipping ? "Undo skip" : live.active ? "Stop today's window" : "Skip next";
     skip.disabled = !cfg.enabled || (!skipping && !live.next_start);
   }
   if (toggle) toggle.textContent = cfg.enabled ? "Turn off" : "Turn on";
@@ -3521,7 +3528,7 @@ function renderPreheat(now){
   }
   // The controls show what is saved, once it is known (never overwriting what he is in the middle of choosing).
   const known = (typeof schedLoaded !== "undefined" && schedLoaded) || !!preheatLive;
-  if (!preheatWheelsSynced && known && document.getElementById("preheat-leave-h") && document.getElementById("preheat-leave-h")._values){
+  if (preheatNeedsSync(car) && known && document.getElementById("preheat-leave-h") && document.getElementById("preheat-leave-h")._values){
     const [lh, lm] = car.depart.split(":");
     setWheelTo("preheat-leave-h", lh);
     setWheelTo("preheat-leave-m", String(Math.floor(Number(lm) / 5) * 5).padStart(2, "0"));
@@ -3531,6 +3538,8 @@ function renderPreheat(now){
     document.getElementById("preheat-wheel").value = car.wheel ? "on" : "off";
     document.getElementById("preheat-below").value = String(car.below_c);
     preheatWheelsSynced = true;
+    preheatTouched = false;
+    preheatSyncedFrom = JSON.stringify(car);
   }
 }
 async function savePreheat(next, okMsg){
@@ -3547,6 +3556,8 @@ async function savePreheat(next, okMsg){
     schedState.easee = body;
     preheatLive = Object.assign({}, preheatLive || {}, next, next.enabled ? {} : {active:false});
     preheatDraft = null;
+    preheatTouched = false;
+    preheatSyncedFrom = JSON.stringify(Object.assign({}, PREHEAT_CAR_DEFAULT, next.car || {}));
     renderPreheat();
     st.className = "sched-status ok"; st.textContent = `${okMsg} (Pi applies within ~30s)`;
   } else {
@@ -3572,7 +3583,9 @@ function preheatSkip(){
   if (preheatSkipping(cfg)) return savePreheat(Object.assign({}, cfg, {skip:null}), "Skip cancelled");
   if (!live.next_start) return null;
   const day = ukDateKey(live.next_start);
-  return savePreheat(Object.assign({}, cfg, {skip:day}), live.active ? "Stopped for today" : `Skipping ${fmtSkip(day)}`);
+  return savePreheat(Object.assign({}, cfg, {skip:day}), live.active
+    ? "Today's window closed. Heating already running in the car carries on until its time is up - stop it in the BYD app if you need to"
+    : `Skipping ${fmtSkip(day)}`);
 }
 // PUBLIC CHARGE ALERT AT X%. The car cannot be stopped remotely (BYD's stop command is a no-op and a
 // remote double unlock did not stop a DC charge - tested 1 Nov 2026), so the Pi's BYD service emails the
@@ -3669,7 +3682,9 @@ function preheatToggle(){
     st.className = "sched-status err"; st.textContent = "Pick your days and when you leave, then Save.";
     return null;
   }
-  return savePreheat(Object.assign({}, cfg, {enabled: !cfg.enabled}), cfg.enabled ? "Pre-heat turned off" : "Pre-heat turned on");
+  return savePreheat(Object.assign({}, cfg, {enabled: !cfg.enabled}), !cfg.enabled ? "Pre-heat turned on"
+    : (preheatLive || {}).active ? "Pre-heat turned off. Heating already running in the car carries on until its time is up - stop it in the BYD app if you need to"
+    : "Pre-heat turned off");
 }
 function setupPreheat(){
   buildWheel("preheat-leave-h", HOURS, "06"); buildWheel("preheat-leave-m", MINUTES, "30");
@@ -3695,6 +3710,9 @@ function setupPreheat(){
     preheatDraft = cur.includes(d) ? cur.filter(x => x !== d) : cur.concat(d).sort((a, b) => a - b);
     renderPreheat();
   });
+  const touched = ev => { if (ev.target.closest && ev.target.closest(".wheel-block, .preheat-opts")) preheatTouched = true; };
+  for (const kind of ["pointerdown", "touchstart", "wheel", "keydown", "change"])
+    details.addEventListener(kind, touched, {capture: true, passive: true});
   document.getElementById("preheat-save").addEventListener("click", preheatSave);
   document.getElementById("preheat-skip").addEventListener("click", preheatSkip);
   document.getElementById("preheat-toggle").addEventListener("click", preheatToggle);
