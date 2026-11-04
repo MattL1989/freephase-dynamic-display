@@ -776,7 +776,7 @@
           <span class="sched-state" id="preheat-state">Off</span>
         </summary>
         <div class="sched-content">
-          <p class="sched-hint">Warms the BYD for when you leave, on the days you pick. Nothing runs unless you set it here, and the car has to be plugged in. The Easee stays on from about an hour before you leave until 15 minutes after, at any price, and the Pi tops the battery back up after the heating.</p>
+          <p class="sched-hint">Warms the BYD for when you leave, on the days you pick. Nothing runs unless you set it here, and the car has to be plugged in. The Easee stays on from about an hour before you leave until 15 minutes after, at any price: if the battery isn't full, the car charges during that time at the peak rate, so it is full when you leave.</p>
           <div class="preheat-days" id="preheat-days" role="group" aria-label="Pre-heat days"></div>
           <div class="sched-body">
             <div class="wheel-block">
@@ -1038,7 +1038,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-03 preheat-yours-v22";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-04 audit-b1-c1-v23";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3171,6 +3171,11 @@ async function loadOverrides(){
 // What was saved, until the Pi reports using it (audit 2 Nov, dashboard-cloud-7: show what the Pi applied,
 // not just what was requested).
 const overrideSaved = { easee: null, breaker: null };
+// Audit 3 Nov B1: POWER16 kept on for the Puma - Auto (or a one-shot window ending) switches it off at peak times, and
+// the Puma's charger faults if its power is cut while it is plugged in.
+const PUMA_AUTO_WARNING = "Switch POWER16 to Auto? It is kept on for the Puma. On Auto the Pi switches it off at peak " +
+  "times - straight away if it is peak now, otherwise at 06:00 - and the Puma's charger faults if its power is cut " +
+  "while it is plugged in. Unplug the Puma first.";
 const OFF_WARNING = {
   easee: "Switch the Easee OFF? The BYD will not charge at all - not even tonight - until you set it back to Auto.",
   breaker: "Switch POWER16 OFF? The car on it stops charging. The Puma's charger faults if its power is cut while " +
@@ -3197,6 +3202,11 @@ function ackOverrides(state){
 async function setOverride(device, mode){
   const statusEl = document.getElementById(OVERRIDE_STATUS_EL[device]);
   if (mode === "off" && currentOverride(device) !== "off" && typeof confirm === "function" && !confirm(OFF_WARNING[device])){
+    paintOverride(device, currentOverride(device));
+    return;
+  }
+  if (device === "breaker" && mode === "auto" && currentOverride(device) === "on" && typeof confirm === "function"
+      && !confirm(PUMA_AUTO_WARNING)){
     paintOverride(device, currentOverride(device));
     return;
   }
@@ -3375,6 +3385,13 @@ async function armSchedule(device){
     statusEl.textContent = "Start and end can't be the same time.";
     return;
   }
+  if (device === "breaker" && currentOverride("breaker") === "on"){
+    // Audit 3 Nov B1: when it ended, the window would hand POWER16 back to Auto and cut the Puma's power - the Pi skips it
+    statusEl.className = "sched-status err";
+    statusEl.textContent = "POWER16 is kept on for the Puma, so the Pi would skip this window: when it ended it would " +
+      "switch POWER16 back to Auto and cut the Puma's power. Set POWER16 to Auto first if you need a window.";
+    return;
+  }
   const name = device === "easee" ? "Easee One" : "POWER16";
   await saveSchedule(device, { enabled:true, start, end, fired:false },
     `Armed · ${name} forced ON at ${start}, back to Auto at ${end}`);
@@ -3382,6 +3399,9 @@ async function armSchedule(device){
 
 async function cancelSchedule(device){
   const cur = schedState[device] || { start:"01:00", end:"05:00", fired:false };
+  if (device === "breaker" && cur.fired && typeof confirm === "function" &&
+      !confirm("Cancel the POWER16 window? It hands POWER16 back to Auto, which switches it off at peak times - the " +
+               "Puma's charger faults if its power is cut while it is plugged in.")) return;
   await saveSchedule(device,
     { enabled:false, start:cur.start, end:cur.end, fired:!!cur.fired },
     "Schedule cancelled");
@@ -3437,6 +3457,15 @@ function preheatWindow(depart, lead){
   const d = preheatMin(depart);
   return {start: preheatClock(Math.max(0, d - lead - 45)), end: preheatClock(Math.min(1439, d + 15))};
 }
+// C1 (audit 3 Nov): the BYD service's own next heating start once it has taken up the saved leave time - it knows
+// whether today's has already run; until then the Pi's Easee window.
+function preheatNextText(cfg, car, live, st, at){
+  if (!cfg.enabled) return "";
+  const day = t => new Date(t).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"});
+  if (st && st.next_start && st.next_depart && preheatSeenRecently(st) && fmtClock(st.next_depart) === car.depart)
+    return `Next: ${day(st.next_start)}, heating ${fmtClock(st.next_start)}–${car.depart}. `;
+  return live.next_start ? `Next: ${day(live.next_start)}, heating ${at}–${car.depart}. ` : "";
+}
 function preheatColderText(below){ return Number(below) >= PREHEAT_ALWAYS_C ? "at any temperature" : `when it is below ${below}°C`; }
 function renderPreheat(now){
   const cfg = preheatSaved(), live = preheatLive || {};
@@ -3461,11 +3490,11 @@ function renderPreheat(now){
   const note = document.getElementById("preheat-note");
   if (note){
     const peak = Number(((typeof currentTariff !== "undefined" && currentTariff) || {}).peak_price_p) || 29.759;
-    const nxt = cfg.enabled && live.next_start
-      ? `Next: ${new Date(live.next_start).toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"Europe/London"})}, heating ${at}–${car.depart}. ` : "";
+    const nxt = preheatNextText(cfg, car, live, bydPreheat, at);
     note.textContent = (skipping ? `Skipping ${fmtSkip(cfg.skip)}. ` : "") + nxt +
       `Peak rate ${peak.toFixed(2)}p/kWh: a 20-minute pre-heat is roughly 1 kWh (≈${Math.round(peak)}p). ` +
-      `If the battery also needs filling the Easee can draw up to 7 kW (≈£${(7 * peak / 100).toFixed(2)} an hour).`;
+      `If the battery isn't full, the car also charges while the window is open, at up to 7 kW ` +
+      `(≈£${(7 * peak / 100).toFixed(2)} an hour), so it is full when you leave.`;
   }
   const carEl = document.getElementById("preheat-car");
   if (carEl){
