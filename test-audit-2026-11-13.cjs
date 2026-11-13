@@ -2,7 +2,8 @@
 // Easee is "Not the BYD" with the fix, "Checking which car this is..." while pending, and no BYD "Ready." or "the BYD
 // is not charging" for another car; C10 - the POWER16 Auto warning still asks when the overrides read failed (the
 // Pi's live_state value stands in); C2 - the heartbeat does not report "BYD service stopped" while the car on the
-// Easee is another car or still being checked.
+// Easee is another car, or still being checked (for 30 minutes after the plug-in). Review: the public-charge alert
+// ended by the BYD service (B1) says so, and its "Armed" line says when it ends.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -119,6 +120,23 @@ run(slice('async function loadLiveState', '// IMMERSION USAGE'));
   await run('setOverride("breaker", "auto")');
   assert.equal(confirmAsked.length, 1, 'nothing known at all: as before');
 
+  // ---- review: the public-charge alert ended by the BYD service (audit 13 Nov B1) is not "Reached the target"
+  const sel = el('byd-dc-pct'); sel.options = []; sel.appendChild = function(o){ this.options.push(o); };
+  const setAt = new Date(Date.now() - 30 * 60000).toISOString();
+  run(`schedState.easee = Object.assign({}, schedState.easee, {byd_stop: {enabled: true, pct: 80, set_at: ${JSON.stringify(setAt)}}})`);
+  const dc = extra => run(`bydDcStop = Object.assign({schema: 1, pct: 80, set_at: ${JSON.stringify(setAt.replace('Z', '+00:00'))},
+    checked_at: new Date().toISOString()}, ${JSON.stringify(extra)}); renderBydDcStop()`);
+  dc({status: 'done', last: {result: 'ended', at: '2026-11-13T09:40:00+00:00', target: 80, pct: 75, detail: 'the charge has stopped'}});
+  assert.equal(el('byd-dc-status').textContent,
+               'Ended at 09:40: the charge has stopped - no email. Arm it again once the car is charging.');
+  dc({status: 'done', last: {result: 'ended', at: '2026-11-13T09:40:00+00:00', target: 80, pct: null}});
+  assert.equal(el('byd-dc-status').textContent, 'Ended at 09:40 - no email. Arm it again once the car is charging.');
+  dc({status: 'done', last: {result: 'notified', at: '2026-11-13T09:40:00+00:00', target: 80, pct: 81}});
+  assert.match(el('byd-dc-status').textContent, /^Reached 81% at 09:40 - email sent/, 'as before');
+  dc({status: 'armed', now_pct: 75, charging: true});
+  assert.match(el('byd-dc-status').textContent, /^Armed: emails you at 80% - now 75%.*, charging\. It ends when the charge stops, if no charging is seen within about 20 minutes of arming, or 6 hours after arming\.$/);
+  assert.ok(!html.includes('Lapses 6 hours after arming'), 'the old wording is gone');
+
   // ---- C2: the heartbeat (its Python run with a faked Supabase)
   const yml = fs.readFileSync(__dirname + '/.github/workflows/pi-heartbeat.yml', 'utf8');
   const body = yml.match(/python3 - <<'PY'\n([\s\S]*?)\n\s*PY\n/)[1].split('\n')
@@ -141,28 +159,31 @@ urllib.request.urlopen = urlopen
 exec(compile(open(sys.argv[1]).read(), "pi-heartbeat", "exec"), {"__name__": "__main__"})
 `;
     const iso = ms => new Date(Date.now() - ms).toISOString().replace('Z', '+00:00');
-    const heartbeat = car => {
+    const heartbeat = (car, pluggedMin) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-'));
       try {
         fs.copyFileSync(__dirname + '/index.html', path.join(dir, 'index.html'));
         fs.writeFileSync(path.join(dir, 'hb.py'), body);
         fs.writeFileSync(path.join(dir, 'wrap.py'), wrapper);
-        const rows = {live_state: {updated_at: iso(60000), easee: {op_mode: 3, car}},
+        const easee = {op_mode: 3, car};
+        if (pluggedMin != null) easee.plugged_at = iso(pluggedMin * 60000);
+        const rows = {live_state: {updated_at: iso(60000), easee},
                       byd_vehicle: {checked_at: iso(5 * 3600000)}};          // not read for 5 hours
         const [cmd, ...args] = py;
         return spawnSync(cmd, [...args, 'wrap.py', 'hb.py'], {cwd: dir, encoding: 'utf8',
           env: Object.assign({}, process.env, {HB_ROWS: JSON.stringify(rows)})});
       } finally { fs.rmSync(dir, {recursive: true, force: true}); }
     };
-    for (const car of ['other', 'pending']){
-      const r = heartbeat(car);
+    for (const [car, pluggedMin] of [['other', null], ['other', 300], ['pending', 5]]){
+      const r = heartbeat(car, pluggedMin);
       assert.equal(r.status, 0, `car ${car}: ${r.stdout}${r.stderr}`);
       assert.doesNotMatch(r.stdout, /BYD service stopped/);
       assert.match(r.stdout, /so the BYD service is not reading the BYD - as it should/);
     }
-    for (const car of ['byd', null]){
-      const r = heartbeat(car);
-      assert.equal(r.status, 1, `car ${car}: the BYD not read for 5 hours is still reported`);
+    // a "pending" check lasts minutes: one still pending 45 minutes after the plug-in (or with no plug-in time) is stuck
+    for (const [car, pluggedMin] of [['pending', 45], ['pending', null], ['byd', 5], [null, 5]]){
+      const r = heartbeat(car, pluggedMin);
+      assert.equal(r.status, 1, `car ${car}, plugged in ${pluggedMin} min ago: the BYD not read for 5 hours is reported`);
       assert.match(r.stdout, /::error title=BYD service stopped::/);
     }
   }

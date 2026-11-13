@@ -3630,7 +3630,8 @@ function preheatSkip(){
 // PUBLIC CHARGE ALERT AT X%. The car cannot be stopped remotely (BYD's stop command is a no-op and a
 // remote double unlock did not stop a DC charge - tested 1 Nov 2026), so the Pi's BYD service emails the
 // owner when the battery reaches the armed %. Armed as easee_schedule.byd_stop {enabled, pct, set_at};
-// lapses after 6 h; once per arming; not on the home Easee.
+// lapses after 6 h - and since audit 13 Nov B1 also once the charge stops, or with no charging seen within ~20 minutes
+// (byd_dc_stop.last.result "ended", with the reason in detail); once per arming; not on the home Easee.
 let bydDcStop = null;             // settings.byd_dc_stop, published by the Pi's BYD service
 const DC_ARM_MS = 6 * 3600000;
 function dcArming(){
@@ -3656,6 +3657,8 @@ function renderBydDcStop(){
     const when = last.at ? fmtClock(last.at) : "";
     st.textContent = last.result === "notified" ? `Reached ${Math.round(last.pct)}% at ${when} - email sent. Stop the charge at the charger.`
       : last.result === "email_failed" ? `Reached ${Math.round(last.pct)}% at ${when}, but the email could not be sent.`
+      // audit 13 Nov B1: the BYD service ended the arming - the charge stopped, or none began
+      : last.result === "ended" ? `Ended at ${when}${last.detail ? ": " + last.detail : ""} - no email. Arm it again once the car is charging.`
       : `Reached the target at ${when}.`;
     return;
   }
@@ -3674,7 +3677,8 @@ function renderBydDcStop(){
   const now = Number.isFinite(svc.now_pct) && svc.pct === arm.pct
     ? ` - now ${Math.round(svc.now_pct)}%${readAt}${svc.charging ? ", charging" : ""}` : "";
   st.textContent = svc.status === "at_home" ? `Armed for ${arm.pct}%, but the car is on the home Easee - it won't act here.`
-    : `Armed: emails you at ${arm.pct}%${now}. Lapses 6 hours after arming.`;
+    : `Armed: emails you at ${arm.pct}%${now}. It ends when the charge stops, if no charging is seen within about ` +
+      "20 minutes of arming, or 6 hours after arming.";
 }
 async function saveDcStop(byd_stop, okMsg){
   const st = document.getElementById("byd-dc-status");
