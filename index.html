@@ -701,6 +701,7 @@
         <progress class="vehicle-battery" id="byd-meter" max="100" value="0" aria-label="BYD battery percentage" hidden></progress>
         <p class="vehicle-note" id="byd-status" role="status">Loading car connection…</p>
         <p class="vehicle-note" id="byd-updated" hidden></p>
+        <p class="vehicle-check" id="byd-car-check" role="status" hidden></p>
         <div class="dc-stop" id="byd-dc-stop">
           <div class="dc-stop-row">
             <label for="byd-dc-pct">Email me when a public charge reaches</label>
@@ -1038,7 +1039,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-04 audit-c5-v24";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-13 audit-v25";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1831,6 +1832,27 @@ function fmtDuration(sec){
 // BYD VEHICLE. Independent of charger readings and controls.
 let bydState = null;
 let bydFetchFailed = false;
+// Audit 13 Nov C3: the BYD service's car check for the car on the Easee (TODO 10), as the Pi publishes it -
+// live_state.easee.car: "other" (not the BYD: the Pi leaves the BYD alone), "pending" (still checking), "byd" or null
+// (the BYD); live_state.easee.car_why: the reason, when the Pi gives one.
+let easeeCar = {car: null, why: null};
+function carCheckText(check){
+  const c = check || {};
+  if (c.car === "other")
+    return `Not the BYD${c.why ? ` (${c.why})` : ""} - the Pi won't start or pre-heat it. ` +
+      "If it is the BYD: unplug, wait a minute, plug back in.";
+  if (c.car === "pending") return "Checking which car this is...";
+  return "";
+}
+function otherCarOnEasee(){ return !!easeeCar && easeeCar.car === "other"; }
+function renderCarCheck(){
+  const box = document.getElementById("byd-car-check");
+  if (!box) return;
+  const text = carCheckText(easeeCar);
+  box.hidden = !text;
+  box.textContent = text;
+  box.dataset.alert = String(otherCarOnEasee());
+}
 function bydNumber(value, max){
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max ? value : null;
 }
@@ -1871,9 +1893,12 @@ function renderByd(state = bydState, now = Date.now(), readFailed = bydFetchFail
     el("byd-status").textContent = readFailed || state.status !== "ok" ? "Connection interrupted. Showing the last reading." : "Waiting for a newer reading from the car.";
   } else {
     el("byd-tag").textContent = "From BYD";
-    const status = state.charging === true ? "Charging" : state.charging === false ? "Not charging" : "Car data";
+    // C3: with another car on the Easee, never "Not charging" - that car's charge is not the BYD's
+    const status = state.charging === true ? "Charging"
+      : state.charging === false ? (otherCarOnEasee() ? "Not on the Easee" : "Not charging") : "Car data";
     el("byd-status").textContent = status + " · updates about every 10 minutes";
   }
+  renderCarCheck();
 }
 async function loadBydState(){
   try {
@@ -1973,6 +1998,15 @@ async function loadLiveState(){
     const easee = state.easee || {};
     const tuya = state.tuya || {};
     const imm  = state.immersion || {};
+    // Audit 13 Nov C3 / C10: the car check, and the overrides the Pi reports using (the fallback when their own read
+    // fails)
+    easeeCar = {car: ["byd", "other", "pending"].includes(easee.car) ? easee.car : null,
+                why: typeof easee.car_why === "string" && easee.car_why.trim() ? easee.car_why.trim() : null};
+    try { renderCarCheck(); } catch (e) {}
+    for (const device of ["easee", "breaker"]){
+      const v = state[OVERRIDE_KEY[device]];
+      liveOverride[device] = typeof v === "string" ? v.trim().toLowerCase() : null;
+    }
 
     // The Pi publishes the whole tariff picture (current rate, period, next change and any
     // free 0p hours), derived from EDF's published rate periods - so nothing is hardcoded.
@@ -2991,7 +3025,8 @@ function renderDeviceAlerts(state){
     const restarts = ef && Array.isArray(ef.restarts) && ef.restarts.length
       ? `The Pi restarted it automatically at ${ef.restarts.map(t => ukClock(t)).join(" and ")}. ` : "";
     if (ez.online === true && (ez.op_mode === 5 || (ef && ef.kind === "error"))){
-      out.push(`<div class="device-alert volt">⚠ Easee error${ef && ef.since ? " since " + ukClock(ef.since) : ""}: the BYD is not charging.` +
+      const who = typeof otherCarOnEasee === "function" && otherCarOnEasee() ? "the car on it" : "the BYD";   // C3
+      out.push(`<div class="device-alert volt">⚠ Easee error${ef && ef.since ? " since " + ukClock(ef.since) : ""}: ${who} is not charging.` +
         `<small>${ef && ef.text ? escHtml(ef.text) + ". " : ""}${restarts}Unplug the cable from the car for 10 seconds and plug it back in. ` +
         `If it stays in error, switch the Easee off at its isolator for 30 seconds.</small></div>`);
     } else if (ef && ef.kind === "pilot"){
@@ -3138,13 +3173,16 @@ function renderImmersionUsage(usage){
 // ------------------------------------------------------------------
 let currentEaseeOverride = null;
 let currentBreakerOverride = null;
+// Audit 13 Nov C10: what the Pi reports using (live_state), when the overrides' own read failed - so the POWER16 Auto
+// warning and the kept-on checks are not skipped
+const liveOverride = { easee: null, breaker: null };
 const overrideBusy = { easee: false, breaker: false };
 const OVERRIDE_KEY = { easee: "easee_override", breaker: "breaker_override" };
 const OVERRIDE_EL  = { easee: "easee-override", breaker: "breaker-override" };
 const OVERRIDE_STATUS_EL = { easee: "easee-override-status", breaker: "breaker-override-status" };
 
 function currentOverride(device){
-  return device === "easee" ? currentEaseeOverride : currentBreakerOverride;
+  return (device === "easee" ? currentEaseeOverride : currentBreakerOverride) ?? liveOverride[device] ?? null;
 }
 
 function paintOverride(device, mode){
@@ -3511,7 +3549,9 @@ function renderPreheat(now){
       const seat = car.seat === "off" ? "" : `, driver's seat heat (${car.seat})`;
       text = `Heating: ${at}–${car.depart}, cabin ${car.cabin_c}°C${seat}` + (car.wheel ? ", steering wheel heat" : "") +
         `, ${preheatColderText(car.below_c)}. ` +
-        (st.status === "ready" ? (preheatSeenRecently(st) ? "Ready." : "Not confirmed by the Pi for over a day - its BYD service may be down.")
+        // C3 (audit 13 Nov): with another car on the Easee the Pi won't pre-heat the BYD - not "Ready."
+        (st.status === "ready" ? (!preheatSeenRecently(st) ? "Not confirmed by the Pi for over a day - its BYD service may be down."
+            : typeof otherCarOnEasee === "function" && otherCarOnEasee() ? "On hold: the car on the Easee is not the BYD." : "Ready.")
           : st.status === "pin_rejected" ? "BYD rejected the PIN - enter it again with byd_pin.py on the PC."
           : st.status === "needs_pin" ? "Waiting for your BYD PIN - run byd_pin.py on the PC."
           : "Saved - waiting for the Pi to confirm (about a minute).");
