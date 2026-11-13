@@ -3,7 +3,8 @@ name: Pi heartbeat
 # Fails - so GitHub emails the owner - when something the night's charging depends on has stopped:
 #  - the home Pi stops updating the dashboard (live_state more than 20 minutes old). Nothing on the Pi can report
 #    its own death: a dead Pi means no 22:58 charger start and nothing watching the chargers. Added 2026-11-01.
-#  - the BYD service stops reading the car while it is plugged in at home (byd_vehicle more than 75 minutes old):
+#  - the BYD service stops reading the car while it is plugged in at home (byd_vehicle more than 150 minutes old; the
+#    car is read hourly while parked since 13 Nov):
 #    it runs the 23:01 start and the night recovery. Added 2026-11-02. Not while the car check says the car on the
 #    Easee is another car, or - for the first 30 minutes after the plug-in - is still checking it (audit 13 Nov C2):
 #    the service leaves the BYD alone then. A check that stays "pending" longer is stuck, and is reported.
@@ -145,7 +146,7 @@ jobs:
                       checked = datetime.fromisoformat(byd["checked_at"])
                       byd_age = (NOW - checked).total_seconds() / 60
                       print(f"BYD service last read the car {byd_age:.0f} min ago.")
-                      if byd_age >= 75:
+                      if byd_age >= 150:                  # read hourly while parked (13 Nov): 2 missed reads
                           remember("byd", "BYD service stopped",
                                    f"The BYD service has not read the car for {byd_age:.0f} minutes although it is "
                                    "plugged in at home. It runs the 23:01 start and the night recovery: check "

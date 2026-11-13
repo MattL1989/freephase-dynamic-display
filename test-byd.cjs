@@ -37,7 +37,10 @@ assert.equal(el('byd-tag').textContent,'Last known');
 assert.equal(el('byd-card').dataset.stale,'true');
 run('renderByd({...state,vehicle_updated_at:null}, now, false)');
 assert.equal(el('byd-tag').textContent,'Last known');
-run('renderByd(state, now+31*60000, false)');
+// a parked BYD is read hourly since 13 Nov: 50 minutes on is still current, 91 is old
+run('renderByd(state, now+50*60000, false)');
+assert.equal(el('byd-tag').textContent,'From BYD');
+run('renderByd(state, now+91*60000, false)');
 assert.equal(el('byd-tag').textContent,'Last known');
 run('renderByd(state, now, true)');
 assert.equal(el('byd-battery').textContent,'94');

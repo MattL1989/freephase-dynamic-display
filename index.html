@@ -1039,7 +1039,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-13 audit-v25";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-13 hourly-v26";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1864,7 +1864,8 @@ function renderByd(state = bydState, now = Date.now(), readFailed = bydFetchFail
   const vehicleAt = Date.parse(state?.vehicle_updated_at || "");
   const checkedAt = Date.parse(state?.checked_at || "");
   const validTime = Number.isFinite(vehicleAt) && vehicleAt <= now + 300000;
-  const old = !validTime || now - vehicleAt > 30 * 60000 || !Number.isFinite(checkedAt) || now - checkedAt > 25 * 60000;
+  // the Pi reads a parked BYD hourly since 13 Nov (each read wakes the car): a reading counts as old after 90 min
+  const old = !validTime || now - vehicleAt > 90 * 60000 || !Number.isFinite(checkedAt) || now - checkedAt > 75 * 60000;
   const stale = hasData && (old || readFailed || state?.status !== "ok");
   el("byd-card").dataset.stale = String(stale);
   el("byd-values").hidden = !hasData;
