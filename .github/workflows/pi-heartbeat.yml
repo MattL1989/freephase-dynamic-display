@@ -2,7 +2,7 @@ name: Pi heartbeat
 
 # Fails - so GitHub emails the owner - when something the night's charging depends on has stopped:
 #  - the home Pi stops updating the dashboard (live_state more than 20 minutes old). Nothing on the Pi can report
-#    its own death: a dead Pi means no 22:58 charger start and nothing watching the chargers. Added 2026-11-01.
+#    its own death: a dead Pi means no 22:54 charger start and nothing watching the chargers. Added 2026-11-01.
 #  - the BYD service stops reading the car while it is plugged in at home (byd_vehicle more than 150 minutes old; the
 #    car is read hourly while parked since 13 Nov):
 #    it runs the 23:01 start and the night recovery. Added 2026-11-02. Not while the car check says the car on the
@@ -125,7 +125,7 @@ jobs:
               if age >= 20:
                   remember("pi", "Home Pi offline",
                            f"The Pi has not updated the dashboard for {age:.0f} minutes. The Easee will not be "
-                           "started at 22:58 and nothing is watching the chargers. Check the Pi has power and its "
+                           "started at 22:54 and nothing is watching the chargers. Check the Pi has power and its "
                            "network connection; it also restarts itself every day at 13:03.", since=updated)
               op = (state.get("easee") or {}).get("op_mode")
               car = (state.get("easee") or {}).get("car")   # the BYD service's car check (null: the BYD)

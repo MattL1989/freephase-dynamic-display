@@ -1039,7 +1039,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-13 hourly-v26";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-14 easee-2254-v27";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -3054,7 +3054,7 @@ function renderDeviceAlerts(state){
       const bad = [chk.easee, chk.breaker].some(r => r && r.result === "problem");
       out.push(`<div class="device-alert ${bad ? "volt" : "info"}">${bad ? "⚠ " : ""}21:00 charger check at ${ukClock(chk.at)}: ` +
         `${line("Easee / BYD", chk.easee)}; ${line("POWER16", chk.breaker)}.` +
-        (bad ? `<small>Fix it before bed if you can: the Easee comes on at 22:58 and the Pi starts the BYD at 23:01; POWER16 is on from 23:00.</small>` : "") + `</div>`);
+        (bad ? `<small>Fix it before bed if you can: the Easee comes on at 22:54 for the BYD's own schedule, and the Pi steps in at 23:01 if the BYD isn't charging; POWER16 is on from 23:00.</small>` : "") + `</div>`);
     }
     if (peak && !checking && (easeePeak || brkDrawing)){
       const which = [easeePeak && "Easee", brkDrawing && "POWER16"].filter(Boolean).join(" and ");
