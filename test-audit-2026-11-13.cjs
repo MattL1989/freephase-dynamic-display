@@ -42,7 +42,7 @@ run(slice('// PRE-HEAT TOP-UP.', '// END PRE-HEAT.'));
 run(slice('async function loadLiveState', '// IMMERSION USAGE'));
 
 (async () => {
-  assert.match(html, /const BUILD = "2026-11-14 easee-2254-v27";/);
+  assert.match(html, /const BUILD = "2026-11-15 audit-v28";/);
   assert.match(html, /now - vehicleAt > 90 \* 60000 \|\| !Number\.isFinite\(checkedAt\) \|\| now - checkedAt > 75 \* 60000/);
   assert.match(html, /<p class="vehicle-check" id="byd-car-check" role="status" hidden><\/p>/);
 
@@ -80,10 +80,10 @@ run(slice('async function loadLiveState', '// IMMERSION USAGE'));
   ctx.byd = {schema: 1, status: 'ok', battery_pct: 64, range_miles: 200, charging: false,
              vehicle_updated_at: new Date(now - 60000).toISOString(), checked_at: new Date(now).toISOString()};
   run('easeeCar = {car: "other", why: null}; renderByd(byd, Date.now(), false)');
-  assert.equal(el('byd-status').textContent, 'Not on the Easee · updates about every 10 minutes');
+  assert.equal(el('byd-status').textContent, 'Not on the Easee · not read while another car is on the Easee');   // audit 15 Nov C8
   assert.equal(el('byd-car-check').hidden, false, 'renderByd shows the car check too');
   run('easeeCar = {car: null, why: null}; renderByd(byd, Date.now(), false)');
-  assert.equal(el('byd-status').textContent, 'Not charging · updates about every 10 minutes', 'the BYD: as before');
+  assert.equal(el('byd-status').textContent, 'Not charging · updates hourly while parked, every 10 minutes while charging', 'the BYD: as before');
 
   // ---- C3: the Easee error banner and the pre-heat's "Ready."
   const alerts = st => { run(`renderDeviceAlerts(${JSON.stringify(Object.assign({tariff: {}, charge_sessions: {}, supply: {}}, st))})`); return el('device-alerts').innerHTML; };

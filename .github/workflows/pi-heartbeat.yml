@@ -2,12 +2,15 @@ name: Pi heartbeat
 
 # Fails - so GitHub emails the owner - when something the night's charging depends on has stopped:
 #  - the home Pi stops updating the dashboard (live_state more than 20 minutes old). Nothing on the Pi can report
-#    its own death: a dead Pi means no 22:54 charger start and nothing watching the chargers. Added 2026-11-01.
+#    its own death: a Pi dead by day leaves the Easee offering ~1.4 kW with its own peak block off (the day offer,
+#    15 Nov); at night there is no 23:01 BYD start. Added 2026-11-01, text audit 15 Nov C4.
 #  - the BYD service stops reading the car while it is plugged in at home (byd_vehicle more than 150 minutes old; the
 #    car is read hourly while parked since 13 Nov):
 #    it runs the 23:01 start and the night recovery. Added 2026-11-02. Not while the car check says the car on the
 #    Easee is another car, or - for the first 30 minutes after the plug-in - is still checking it (audit 13 Nov C2):
-#    the service leaves the BYD alone then. A check that stays "pending" longer is stuck, and is reported.
+#    the service leaves the BYD alone then. A check that stays "pending" longer is stuck, and is reported. While the
+#    Easee is offline the service reads the car only every 6 hours, so an old reading then is the Easee being offline,
+#    and is reported as that (audit 15 Nov C12).
 #  - Supabase refuses the public key, a row is missing, or Supabase stays unreachable: the Pi and the BYD service
 #    share their state through it. Added 2026-11-02 (it used to pass silently).
 # GitHub runs this far less often than the schedule asks - every 5-10 hours (1-3 Nov 2026) - so the Pi's own
@@ -123,14 +126,21 @@ jobs:
               age = (NOW - updated).total_seconds() / 60
               print(f"Pi last published {age:.0f} min ago ({updated.isoformat()}).")
               if age >= 20:
+                  # audit 15 Nov C4: what a dead Pi means now, by day and at night
                   remember("pi", "Home Pi offline",
-                           f"The Pi has not updated the dashboard for {age:.0f} minutes. The Easee will not be "
-                           "started at 22:54 and nothing is watching the chargers. Check the Pi has power and its "
-                           "network connection; it also restarts itself every day at 13:03.", since=updated)
-              op = (state.get("easee") or {}).get("op_mode")
-              car = (state.get("easee") or {}).get("car")   # the BYD service's car check (null: the BYD)
+                           f"The Pi has not updated the dashboard for {age:.0f} minutes, so nothing is controlling "
+                           "the chargers. By day the Easee may be left offering about 1.4 kW with its own peak block "
+                           "off: a car that doesn't wait for its own schedule could charge at the peak rate - pause "
+                           "the Easee in the Easee app. At night the Pi's 23:01 start won't happen: after 23:00, "
+                           "resume the Easee if you paused it, then open the BYD app and tap Charge. Check the Pi has "
+                           "power and its network connection; it also restarts itself every day at 13:03.",
+                           since=updated)
+              easee = state.get("easee") or {}
+              op = easee.get("op_mode")
+              car = easee.get("car")                        # the BYD service's car check (null: the BYD)
+              easee_offline = easee.get("online") is False  # C12: then the BYD service reads only every 6 hours
               try:
-                  plugged = datetime.fromisoformat((state.get("easee") or {}).get("plugged_at"))
+                  plugged = datetime.fromisoformat(easee.get("plugged_at"))
                   plugged_min = (NOW - plugged).total_seconds() / 60
               except (TypeError, ValueError):
                   plugged_min = None                        # no plug-in time: a "pending" check can't be timed
@@ -146,7 +156,13 @@ jobs:
                       checked = datetime.fromisoformat(byd["checked_at"])
                       byd_age = (NOW - checked).total_seconds() / 60
                       print(f"BYD service last read the car {byd_age:.0f} min ago.")
-                      if byd_age >= 150:                  # read hourly while parked (13 Nov): 2 missed reads
+                      if byd_age >= 150 and easee_offline:  # audit 15 Nov C12: the Easee, not the BYD service
+                          remember("easee", "Easee offline",
+                                   f"The Easee is offline (not reachable through Easee's cloud) and the BYD was "
+                                   f"last read {byd_age:.0f} minutes ago: while the Easee is offline the BYD service "
+                                   "reads the car only every 6 hours, so that is expected. Check the Easee has "
+                                   "power (its RCD) and Wi-Fi; the Pi cannot see or control it until it is back.")
+                      elif byd_age >= 150:                # read hourly while parked (13 Nov): 2 missed reads
                           remember("byd", "BYD service stopped",
                                    f"The BYD service has not read the car for {byd_age:.0f} minutes although it is "
                                    "plugged in at home. It runs the 23:01 start and the night recovery: check "
