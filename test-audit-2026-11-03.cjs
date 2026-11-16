@@ -52,7 +52,7 @@ run(slice('async function saveSchedule', 'async function armSchedule'));
   // ---- dashboard-cloud-9: the 21:00 problem line gives today's start times
   const chk = {at: new Date().toISOString(), easee: {result: 'problem', detail: "the BYD isn't plugged in"},
                breaker: {result: 'skipped', detail: 'kept on'}};
-  assert.match(alerts({charger_check: chk}), /the Easee comes on at 22:54 and the Pi starts the BYD at 23:01; POWER16 is on from 23:00/);   // audit 15 Nov C7
+  assert.match(alerts({charger_check: chk}), /the BYD's own schedule starts it at 23:00, and the Pi starts it at 23:05 if it hasn't; POWER16 is on from 23:00/);   // always-on plan, 16 Nov
 
   // ---- Off asks first; a "no" changes nothing
   confirmAnswer = false;

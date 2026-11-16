@@ -532,7 +532,7 @@
   .live-details > .charge-grid,.live-details > .fault-banner{margin:0 12px 12px}
   .lc-starts{font-size:12px;color:var(--text-dim);margin-top:10px;line-height:1.5;font-variant-numeric:tabular-nums}
   .lc-starts b{color:var(--text);font-weight:650}
-  .lc-starts.day-offer{margin:0 0 12px}
+  .lc-starts.day-offer, .lc-starts.day-guard{margin:0 0 12px}
   .car-edit{margin-left:6px;padding:1px 8px;border-radius:999px;border:1px solid rgba(var(--device-rgb),0.4);
     background:transparent;color:var(--device-color);font:inherit;font-size:10px;cursor:pointer;text-transform:none;letter-spacing:0}
   .vehicle-away{font-size:12px;color:var(--text-dim);margin:0 0 16px;padding:10px 14px;border-radius:12px;
@@ -679,6 +679,7 @@
         </div>
       </div>
       <div id="easee-override-status" class="override-status"></div>
+      <p class="lc-starts day-guard" id="easee-day-guard" role="status" hidden></p>
       <p class="lc-starts day-offer" id="easee-day-offer" role="status" hidden></p>
       <div class="charge-cost">
         <div class="lc-head"><span class="lc-title" id="easee-lc-title">Last charge</span><span class="lc-when" id="easee-lc-when">—</span></div>
@@ -1041,7 +1042,7 @@
   </div>
 </div>
 <script>
-const BUILD = "2026-11-15 audit-v28";   // visible in the footer; confirms which build a device loaded
+const BUILD = "2026-11-16 always-on-v29";   // visible in the footer; confirms which build a device loaded
 const SUPABASE_URL = "https://pczxhzjdzcmojstavzym.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenhoempkemNtb2pzdGF2enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODAzOTksImV4cCI6MjA4MDc1NjM5OX0.OhWE9-HT0fFQUAdVQEkwp1PCLIfSsKOqQrZidK3cVxs";
 
@@ -1487,14 +1488,20 @@ function renderTariff(t){
 
   const startH = String(t.offpeak_start_hour == null ? 23 : t.offpeak_start_hour).padStart(2,"0");
   const endH   = String(t.offpeak_end_hour   == null ? 6  : t.offpeak_end_hour  ).padStart(2,"0");
-  // Audit 15 Nov C6: at the peak rate the Easee is no longer simply held - in Auto it offers 1.4 kW 06:10-22:54 (the
-  // day offer) and is on, capped at about 3 kW, 22:54-23:00. A hold only when the Pi says neither is happening.
+  // Matt's always-on plan (16 Nov): at the peak rate the Easee is on at full power and the BYD's own schedule waits
+  // for 23:00 (the Pi checks at 23:05) - unless the day guard holds it, it is set to Off, or its own schedule stops it
+  // 06:00-06:30. See PEAK RATE PLAN below.
   const peakNow = peakPlan();
-  const peakText = peakNow === "offer"
-    ? "Peak rate \u2014 the Easee offers 1.4 kW for the BYD's own schedule; full charging from " + startH + ":00"
-    : peakNow === "prestart"
-    ? "Peak rate \u2014 the Easee is on, capped at about 3 kW; full charging from " + startH + ":00"
-    : "Peak rate \u2014 chargers hold until " + startH + ":00";
+  const guard = peakNow === "guard" ? (livePlan || {}).dayGuard : null;
+  const peakText = peakNow === "guard"
+    ? "Paused until " + ukHM(guard.until) + " \u2014 a car charged at the peak rate" + (guard.at != null ? " at " + ukHM(guard.at) : "")
+    : peakNow === "off"
+    ? "Peak rate \u2014 the Easee is set to Off"
+    : peakNow === "own_stop"
+    ? "Peak rate \u2014 the Easee's own schedule pauses it until 06:30"
+    : peakNow === "unknown"
+    ? "Peak rate \u2014 off-peak from " + startH + ":00"
+    : "Peak rate \u2014 the Easee is on; the BYD's own schedule starts at 23:00 (the Pi checks at 23:05)";
 
   document.getElementById("now-context").innerHTML = rewardActive
     ? `Power Perks · published ${Number(t.price_p).toFixed(2)}p/kWh credited later`
@@ -1521,9 +1528,11 @@ function renderTariff(t){
     pill.textContent = isFree ? "FREE \u00b7 chargers on" : "Off-peak \u00b7 chargers on";
   } else {
     pill.className = "charging-pill off";
-    pill.textContent = peakNow === "offer" ? "1.4 kW on offer · full from " + startH + ":00"
-      : peakNow === "prestart" ? "About 3 kW · full from " + startH + ":00"
-      : "Holding until " + startH + ":00";
+    pill.textContent = peakNow === "guard" ? "Paused until " + ukHM(guard.until)
+      : peakNow === "off" ? "Easee set to Off"
+      : peakNow === "own_stop" ? "Paused until 06:30"
+      : peakNow === "unknown" ? "Off-peak from " + startH + ":00"
+      : "Easee on · BYD starts 23:00";
   }
   if (rewardActive){ pill.className = "charging-pill on"; pill.textContent = "Power Perks active"; }
 
@@ -1549,55 +1558,89 @@ function renderTariff(t){
 }
 
 // ------------------------------------------------------------------
-// DAY OFFER (audit 15 Nov C6 / C10). In Auto, 06:10-22:54, the Easee is not paused: it offers 6 A (about 1.4 kW) so
-// the BYD sees power when it falls asleep and its own 22:55 schedule can start it; a car really charging stops the
-// offer until 22:54. The Pi reports it as live_state.day_offer {on, stopped_at, why, kwh} (missing on older data).
-// 22:54-23:00 in Auto (last_state "charger_prestart") the Easee is on, capped at about 3 kW.
+// PEAK RATE PLAN (Matt's always-on plan, 16 Nov 2026). The Easee is on at full power all day - the Pi no longer
+// pauses it at the peak rate; its own weekly schedule (06:30 -> 06:00) stops it 06:00-06:30 (not on a pre-heat
+// morning). The BYD's own schedule starts the car at 23:00; the Pi checks at 23:05. The day guard: a car charging at
+// the peak rate by day in Auto (two readings >= 0.8 kW, about a minute) is paused until 23:00 - live_state.day_guard
+// {held_until, at, why} (ISO UTC), null when not holding; held_until in the future = paused. Gone: the day offer
+// (6 A 06:10-22:54) and the 22:54-23:00 cap. live_state.day_offer stays as {on: false, ...} or null and shows nothing
+// (only an older Pi build reporting on: true still gets its line); last_state "charger_prestart" no longer happens and
+// is taken as the peak rate.
 // ------------------------------------------------------------------
-let livePlan = {dayOffer: null, lastState: null, easeeOverride: null};
-const DAY_OFFER_FROM_MIN = 6 * 60 + 10, DAY_OFFER_UNTIL_MIN = 22 * 60 + 54;
+let livePlan = {dayOffer: null, dayGuard: null, lastState: null, easeeOverride: null, preheat: false};
+const DAY_OFFER_FROM_MIN = 6 * 60 + 10, DAY_OFFER_UNTIL_MIN = 22 * 60 + 54;      // an older Pi build only
+const OWN_STOP_FROM_MIN = 6 * 60, OWN_STOP_UNTIL_MIN = 6 * 60 + 30;             // the Easee's own schedule stops it
 function ukMinuteOfDay(ms){
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {timeZone: "Europe/London", hour: "2-digit",
     minute: "2-digit", hourCycle: "h23"}).formatToParts(new Date(ms)).map(x => [x.type, x.value]));
   return Number(p.hour) * 60 + Number(p.minute);
 }
+function ukHM(ms){
+  return new Date(ms).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/London"});
+}
 function inDayOfferHours(now = Date.now()){
   const m = ukMinuteOfDay(now);
   return m >= DAY_OFFER_FROM_MIN && m < DAY_OFFER_UNTIL_MIN;
 }
-function livePlanFrom(state){
-  const st = state || {}, d = st.day_offer;
-  return {dayOffer: d && typeof d === "object" && !Array.isArray(d) ? d : null,
-          lastState: typeof st.last_state === "string" ? st.last_state : null,
-          easeeOverride: typeof st.easee_override === "string" ? st.easee_override.trim().toLowerCase() : null};
+// live_state.day_guard -> {until, at, why} (ms, ms or null, text or null); null for null, older data or nonsense
+function dayGuardFrom(g){
+  if (!g || typeof g !== "object" || Array.isArray(g)) return null;
+  const until = Date.parse(typeof g.held_until === "string" ? g.held_until : "");
+  if (!Number.isFinite(until)) return null;
+  const at = Date.parse(typeof g.at === "string" ? g.at : "");
+  return {until, at: Number.isFinite(at) ? at : null, why: typeof g.why === "string" && g.why.trim() ? g.why.trim() : null};
 }
-// What the Easee does at the peak rate: "offer" (1.4 kW on offer), "prestart" (on, capped, 22:54-23:00) or "hold"
+function livePlanFrom(state){
+  const st = state || {}, d = st.day_offer, pre = st.easee_preheat;
+  return {dayOffer: d && typeof d === "object" && !Array.isArray(d) ? d : null,
+          dayGuard: dayGuardFrom(st.day_guard),
+          lastState: typeof st.last_state === "string" ? st.last_state : null,
+          easeeOverride: typeof st.easee_override === "string" ? st.easee_override.trim().toLowerCase() : null,
+          preheat: !!(pre && typeof pre === "object" && pre.active === true)};
+}
+// The day guard holds the Easee: held_until still ahead, and not overridden (On charges, Off is off - the Pi's rule)
+function dayGuardHeld(plan = livePlan, now = Date.now()){
+  const p = plan || {};
+  return !!p.dayGuard && p.dayGuard.until > now && p.easeeOverride !== "on" && p.easeeOverride !== "off";
+}
+// The Easee at the peak rate: "on" (Auto or On), "guard" (paused until 23:00), "off" (set to Off), "own_stop" (Auto,
+// 06:00-06:30: its own schedule) or "unknown" (the override not known)
 function peakPlan(plan = livePlan, now = Date.now()){
   const p = plan || {};
-  if (p.easeeOverride === "auto" && p.lastState === "charger_prestart") return "prestart";
-  if (p.dayOffer && p.dayOffer.on === true && inDayOfferHours(now)) return "offer";
-  return "hold";
+  if (p.easeeOverride === "off") return "off";
+  if (dayGuardHeld(p, now)) return "guard";
+  if (p.easeeOverride === "on") return "on";
+  if (p.easeeOverride !== "auto") return "unknown";
+  const m = ukMinuteOfDay(now);
+  return m >= OWN_STOP_FROM_MIN && m < OWN_STOP_UNTIL_MIN && !p.preheat ? "own_stop" : "on";
 }
-// The Easee card's line: on, stopped today (when and why), or nothing (no field, or outside 06:10-22:54)
+// The Easee card's day-guard line while it holds, e.g. "Paused at 14:05 until 23:00: a car started charging at
+// 7.1 kW at the peak rate"; nothing otherwise
+function dayGuardText(plan = livePlan, now = Date.now()){
+  if (!dayGuardHeld(plan, now)) return "";
+  const g = plan.dayGuard;
+  return "Paused " + (g.at != null ? "at " + ukHM(g.at) + " " : "") + "until " + ukHM(g.until) + ": " +
+         (g.why || "a car charged at the peak rate");
+}
+// The old day offer's line: nothing unless an older Pi build reports it on (06:10-22:54) - never for on: false
 function dayOfferText(d, now = Date.now()){
-  if (!d || typeof d !== "object") return "";
-  const ukDay = ms => new Date(ms).toLocaleDateString("en-CA", {timeZone: "Europe/London"});
-  const stopped = Date.parse(d.stopped_at || "");
-  if (Number.isFinite(stopped) && ukDay(stopped) === ukDay(now)){
-    const at = new Date(stopped).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit", timeZone: "Europe/London"});
-    const why = typeof d.why === "string" ? d.why.trim() : "";
-    return "Day offer stopped at " + at + (why ? ": " + why : "");
-  }
-  return d.on === true && inDayOfferHours(now) ? "Day offer: 1.4 kW on offer until 22:54" : "";
+  if (!d || typeof d !== "object" || d.on !== true) return "";
+  return inDayOfferHours(now) ? "Day offer: 1.4 kW on offer until 22:54" : "";
 }
+// The Easee card's lines (named for the day offer; renders the day guard's line too)
 function renderDayOffer(now = Date.now()){
-  const box = document.getElementById("easee-day-offer");
-  if (!box) return;
-  const text = dayOfferText((livePlan || {}).dayOffer, now);
-  box.hidden = !text;
-  box.textContent = text;
+  const lines = [["easee-day-guard", () => dayGuardText(livePlan, now)],
+                 ["easee-day-offer", () => dayOfferText((livePlan || {}).dayOffer, now)]];
+  for (const [id, text] of lines){
+    const box = document.getElementById(id);
+    if (!box) continue;
+    let t = "";
+    try { t = text(); } catch (e) {}
+    box.hidden = !t;
+    box.textContent = t;
+  }
 }
-// END DAY OFFER.
+// END PEAK RATE PLAN.
 
 // ------------------------------------------------------------------
 // PIN-GATED CONTROL WRITES
@@ -2074,7 +2117,7 @@ async function loadLiveState(){
       const v = state[OVERRIDE_KEY[device]];
       liveOverride[device] = typeof v === "string" ? v.trim().toLowerCase() : null;
     }
-    // Audit 15 Nov C6 / C10: the day offer, the Pi's state and the Easee override it uses - before renderTariff
+    // The day guard (16 Nov), the old day offer, the Pi's state and the Easee override it uses - before renderTariff
     try { livePlan = livePlanFrom(state); renderDayOffer(); } catch (e) {}
 
     // The Pi publishes the whole tariff picture (current rate, period, next change and any
@@ -3114,8 +3157,8 @@ function renderDeviceAlerts(state){
     const pre = state.easee_preheat || {};
     const chk = state.charger_check || {};
     const checking = state.last_state === "charger_check" || chk.active === true;
-    // Audit 15 Nov C5: 22:54-23:00 in Auto the Easee is on (capped at about 3 kW) for the BYD's own 22:55 schedule -
-    // wanted too. The overrides are the values the Pi reports using.
+    // The overrides are the values the Pi reports using. "charger_prestart" (22:54-23:00, the old cap; gone since the
+    // always-on plan of 16 Nov) is only ever reported by an older Pi build: its BYD start was wanted then.
     const mode = v => typeof v === "string" ? v.trim().toLowerCase() : null;
     const ezMode = mode(state.easee_override), brMode = mode(state.breaker_override);
     const prestart = ezMode === "auto" && state.last_state === "charger_prestart";
@@ -3127,20 +3170,21 @@ function renderDeviceAlerts(state){
       const bad = [chk.easee, chk.breaker].some(r => r && r.result === "problem");
       out.push(`<div class="device-alert ${bad ? "volt" : "info"}">${bad ? "⚠ " : ""}21:00 charger check at ${ukClock(chk.at)}: ` +
         `${line("Easee / BYD", chk.easee)}; ${line("POWER16", chk.breaker)}.` +
-        (bad ? `<small>Fix it before bed if you can: the Easee comes on at 22:54 and the Pi starts the BYD at 23:01; POWER16 is on from 23:00.</small>` : "") + `</div>`);
+        (bad ? `<small>Fix it before bed if you can: the BYD's own schedule starts it at 23:00, and the Pi starts it at 23:05 if it hasn't; POWER16 is on from 23:00.</small>` : "") + `</div>`);
     }
     if (peak && !checking && (easeePeak || brkDrawing)){
       const which = [easeePeak && "Easee", brkDrawing && "POWER16"].filter(Boolean).join(" and ");
       const price = Number(t.price_p || t.peak_price_p);
-      // C5: "set it to Auto" only when it is set to On; in Auto the Pi stops it by itself (the day offer's guard: two
-      // readings of 0.8 kW or more, or 0.3 kWh in a day; otherwise the next pause)
+      // C5: "set it to Auto" only when it is set to On. In Auto the day guard (16 Nov) pauses the Easee until 23:00
+      // after two readings of 0.8 kW or more (about a minute); under 0.8 kW it leaves it. Off: the Pi pauses it.
       const tips = [];
       if (easeePeak){
-        const offer = !!(state.day_offer && state.day_offer.on === true);
         if (ezMode === "on") tips.push("The Easee is set to On: set it to Auto to wait for 23:00, or use Scheduled charge for a timed top-up.");
-        else if (ezMode === "auto" && offer && Number(easee.total_power_kw) < 0.8)
-          tips.push("A car is taking a little power from the day offer; the Pi stops the offer once cars have taken 0.3 kWh today (about 9p).");
-        else if (ezMode === "auto" || ezMode === "off")
+        else if (ezMode === "auto" && Number(easee.total_power_kw) < 0.8)
+          tips.push("A car is taking a little power: the Pi pauses the Easee until 23:00 only if it draws 0.8 kW or more for about a minute. Pause it in the Easee app if you need to.");
+        else if (ezMode === "auto")
+          tips.push("The Pi pauses the Easee until 23:00 after about a minute. If it carries on, pause the Easee in the Easee app.");
+        else if (ezMode === "off")
           tips.push("The Pi will stop it within a minute. If it carries on, pause the Easee in the Easee app.");
       }
       if (brkDrawing){

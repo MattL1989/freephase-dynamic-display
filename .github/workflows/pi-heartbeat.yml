@@ -2,11 +2,12 @@ name: Pi heartbeat
 
 # Fails - so GitHub emails the owner - when something the night's charging depends on has stopped:
 #  - the home Pi stops updating the dashboard (live_state more than 20 minutes old). Nothing on the Pi can report
-#    its own death: a Pi dead by day leaves the Easee offering ~1.4 kW with its own peak block off (the day offer,
-#    15 Nov); at night there is no 23:01 BYD start. Added 2026-11-01, text audit 15 Nov C4.
+#    its own death: since Matt's always-on plan (16 Nov) the Easee is on at full power by day (its own schedule stops
+#    it only 06:00-06:30), so a Pi dead by day means no day guard; at night there is no 23:05 BYD check. Added
+#    2026-11-01, text audit 15 Nov C4, always-on 16 Nov.
 #  - the BYD service stops reading the car while it is plugged in at home (byd_vehicle more than 150 minutes old; the
 #    car is read hourly while parked since 13 Nov):
-#    it runs the 23:01 start and the night recovery. Added 2026-11-02. Not while the car check says the car on the
+#    it runs the 23:05 check and the night recovery. Added 2026-11-02. Not while the car check says the car on the
 #    Easee is another car, or - for the first 30 minutes after the plug-in - is still checking it (audit 13 Nov C2):
 #    the service leaves the BYD alone then. A check that stays "pending" longer is stuck, and is reported. While the
 #    Easee is offline the service reads the car only every 6 hours, so an old reading then is the Easee being offline,
@@ -126,14 +127,15 @@ jobs:
               age = (NOW - updated).total_seconds() / 60
               print(f"Pi last published {age:.0f} min ago ({updated.isoformat()}).")
               if age >= 20:
-                  # audit 15 Nov C4: what a dead Pi means now, by day and at night
+                  # audit 15 Nov C4, always-on plan 16 Nov: what a dead Pi means now, by day and at night
                   remember("pi", "Home Pi offline",
                            f"The Pi has not updated the dashboard for {age:.0f} minutes, so nothing is controlling "
-                           "the chargers. By day the Easee may be left offering about 1.4 kW with its own peak block "
-                           "off: a car that doesn't wait for its own schedule could charge at the peak rate - pause "
-                           "the Easee in the Easee app. At night the Pi's 23:01 start won't happen: after 23:00, "
-                           "resume the Easee if you paused it, then open the BYD app and tap Charge. Check the Pi has "
-                           "power and its network connection; it also restarts itself every day at 13:03.",
+                           "the chargers. By day the Easee stays on at full power (its own schedule stops it only "
+                           "06:00-06:30), so a car plugged in by day would charge at the peak rate - pause it in the "
+                           "Easee app if needed. At night the BYD's own 23:00 schedule should start it, but there is "
+                           "no 23:05 check: after 23:00, resume the Easee if you paused it, and if the BYD isn't "
+                           "charging, open the BYD app and tap Charge. Check the Pi has power and its network "
+                           "connection; it also restarts itself every day at 13:03.",
                            since=updated)
               easee = state.get("easee") or {}
               op = easee.get("op_mode")
@@ -165,7 +167,7 @@ jobs:
                       elif byd_age >= 150:                # read hourly while parked (13 Nov): 2 missed reads
                           remember("byd", "BYD service stopped",
                                    f"The BYD service has not read the car for {byd_age:.0f} minutes although it is "
-                                   "plugged in at home. It runs the 23:01 start and the night recovery: check "
+                                   "plugged in at home. It runs the 23:05 check and the night recovery: check "
                                    "freephase-byd on the Pi.", since=checked)
                   except Exception as e:
                       remember("byd", "BYD service state unreadable",

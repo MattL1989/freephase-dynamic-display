@@ -3,6 +3,8 @@
 // hero says the Easee offers 1.4 kW while the day offer is on (a hold only when it is not); C10 - the Easee card shows
 // the day offer (on / stopped at HH:MM: why / nothing); C7 / C8 - the 21:00 line and the BYD read times; C4 / C12 - the
 // heartbeat's "Home Pi offline" text, and an old BYD reading while the Easee is offline reported as the Easee offline.
+// 16 Nov (Matt's always-on plan, build always-on-v29): the day offer and the 22:54 cap are gone - the wording asserted
+// here is the new plan's; the old states are only checked to be handled harmlessly (test-2026-11-16.cjs has the rest).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -48,14 +50,14 @@ const OFFER_ON = {on: true, stopped_at: null, why: null, kwh: 0.0};
 const STOPPED = {on: false, stopped_at: '2026-11-15T14:05:12.123456+00:00', why: 'a car started charging at 1.4 kW', kwh: 0.05};
 
 (async () => {
-  assert.match(html, /const BUILD = "2026-11-15 audit-v28";/);
+  assert.match(html, /const BUILD = "2026-11-16 always-on-v29";/);
   assert.match(html, /<p class="lc-starts day-offer" id="easee-day-offer" role="status" hidden><\/p>/);
 
-  // ---- C10: the day offer's line on the Easee card
+  // ---- C10: the day offer's line on the Easee card - since 16 Nov only an older Pi build reporting it on gets one
   const text = (d, iso) => { at(iso); return run(`dayOfferText(${JSON.stringify(d)})`); };
   assert.equal(text(null, '2026-11-15T12:00:00Z'), '', 'no field (older data): nothing');
   assert.equal(text(undefined, '2026-11-15T12:00:00Z'), '');
-  assert.equal(text(OFFER_ON, '2026-11-15T12:00:00Z'), 'Day offer: 1.4 kW on offer until 22:54');
+  assert.equal(text(OFFER_ON, '2026-11-15T12:00:00Z'), 'Day offer: 1.4 kW on offer until 22:54', 'an older Pi build');
   assert.equal(text(OFFER_ON, '2026-11-15T06:10:00Z'), 'Day offer: 1.4 kW on offer until 22:54', 'from 06:10');
   assert.equal(text(OFFER_ON, '2026-11-15T06:09:00Z'), '', 'before 06:10: nothing');
   assert.equal(text(OFFER_ON, '2026-11-15T22:54:00Z'), '', 'from 22:54: nothing');
@@ -63,14 +65,12 @@ const STOPPED = {on: false, stopped_at: '2026-11-15T14:05:12.123456+00:00', why:
   assert.equal(text(OFFER_ON, '2026-07-01T05:15:00Z'), 'Day offer: 1.4 kW on offer until 22:54', 'UK summer time: 06:15 BST');
   assert.equal(text(OFFER_ON, '2026-07-01T05:05:00Z'), '', '06:05 BST');
   assert.equal(text({on: false, stopped_at: null, why: null, kwh: 0}, '2026-11-15T12:00:00Z'), '', 'off, not stopped');
-  assert.equal(text(STOPPED, '2026-11-15T15:00:00Z'), 'Day offer stopped at 14:05: a car started charging at 1.4 kW');
-  assert.equal(text(STOPPED, '2026-11-15T23:30:00Z'), 'Day offer stopped at 14:05: a car started charging at 1.4 kW',
-               'stopped today: still said after 22:54');
-  assert.equal(text(STOPPED, '2026-11-16T09:00:00Z'), '', 'a stop from yesterday is not today\'s');
-  assert.equal(text({on: false, stopped_at: '2026-11-15T14:05:00+00:00', why: null}, '2026-11-15T15:00:00Z'),
-               'Day offer stopped at 14:05');
+  assert.equal(text(STOPPED, '2026-11-15T15:00:00Z'), '', '16 Nov: on false shows nothing, even stopped today');
+  assert.equal(text(STOPPED, '2026-11-15T23:30:00Z'), '');
+  assert.equal(text(STOPPED, '2026-11-16T09:00:00Z'), '');
   assert.equal(text({on: false, stopped_at: '2026-11-15T16:40:00+00:00', why: 'cars had taken 0.31 kWh from it today'},
-               '2026-11-15T17:00:00Z'), 'Day offer stopped at 16:40: cars had taken 0.31 kWh from it today');
+               '2026-11-15T17:00:00Z'), '');
+  assert.ok(!html.includes('"Day offer stopped at "'), 'the stopped line is gone');
 
   // ---- C10 through loadLiveState (taken up before anything else can fail)
   const live = extra => [{value: JSON.stringify(Object.assign({updated_at: new Date(TestDate.now()).toISOString(),
@@ -81,46 +81,46 @@ const STOPPED = {on: false, stopped_at: '2026-11-15T14:05:12.123456+00:00', why:
   await run('loadLiveState()');
   assert.equal(el('easee-day-offer').hidden, false);
   assert.equal(el('easee-day-offer').textContent, 'Day offer: 1.4 kW on offer until 22:54');
-  // ---- C6: the hero, from the same live_state
+  // ---- C6: the hero, from the same live_state - 16 Nov: the always-on plan's words whatever day_offer says
+  const ON = ['Peak rate — the Easee is on; the BYD\'s own schedule starts at 23:00 (the Pi checks at 23:05)',
+              'Easee on · BYD starts 23:00'];
   assert.equal(el('now-band-name').textContent, 'PEAK');
-  assert.equal(el('now-context').innerHTML,
-    '<span class="delta above">Peak rate — the Easee offers 1.4 kW for the BYD\'s own schedule; full charging from 23:00</span>');
-  assert.equal(el('charging-pill').textContent, '1.4 kW on offer · full from 23:00');
+  assert.equal(el('now-context').innerHTML, '<span class="delta above">' + ON[0] + '</span>');
+  assert.equal(el('charging-pill').textContent, ON[1]);
 
   at('2026-11-15T15:00:00Z');
   liveRows = live({day_offer: STOPPED});
   await run('loadLiveState()');
-  assert.equal(el('easee-day-offer').textContent, 'Day offer stopped at 14:05: a car started charging at 1.4 kW');
-  assert.equal(el('easee-day-offer').hidden, false);
-  assert.equal(el('now-context').innerHTML, '<span class="delta above">Peak rate — chargers hold until 23:00</span>',
-               'stopped: a hold');
-  assert.equal(el('charging-pill').textContent, 'Holding until 23:00');
+  assert.equal(el('easee-day-offer').textContent, '', '16 Nov: on false - nothing');
+  assert.equal(el('easee-day-offer').hidden, true);
+  assert.equal(el('now-context').innerHTML, '<span class="delta above">' + ON[0] + '</span>', 'no hold any more');
+  assert.equal(el('charging-pill').textContent, ON[1]);
 
   liveRows = live({});                                   // older data: no day_offer field
   await run('loadLiveState()');
   assert.equal(el('easee-day-offer').hidden, true);
   assert.equal(el('easee-day-offer').textContent, '');
-  assert.equal(el('charging-pill').textContent, 'Holding until 23:00');
+  assert.equal(el('charging-pill').textContent, ON[1]);
   liveRows = live({day_offer: 'nonsense'});
   await run('loadLiveState()');
   assert.equal(el('easee-day-offer').hidden, true, 'an unexpected value is not shown');
 
-  // ---- C6: the hero's peak words, case by case
+  // ---- C6: the hero's peak words, case by case (16 Nov: the old states handled harmlessly)
   const hero = (state, iso) => {
     at(iso); run(`livePlan = livePlanFrom(${JSON.stringify(state)}); staleSince = 0; renderTariff(${JSON.stringify(TARIFF)})`);
     return [el('now-context').innerHTML.replace(/<[^>]+>/g, ''), el('charging-pill').textContent];
   };
-  const HOLD = ['Peak rate — chargers hold until 23:00', 'Holding until 23:00'];
-  assert.deepEqual(hero({easee_override: 'auto', last_state: 'peak_off', day_offer: OFFER_ON}, '2026-11-15T12:00:00Z'),
-    ['Peak rate — the Easee offers 1.4 kW for the BYD\'s own schedule; full charging from 23:00', '1.4 kW on offer · full from 23:00']);
-  assert.deepEqual(hero({easee_override: 'on', last_state: 'peak_off', day_offer: {on: false}}, '2026-11-15T12:00:00Z'), HOLD,
-    'override not Auto: the Pi reports the offer off');
-  assert.deepEqual(hero({easee_override: 'auto', last_state: 'peak_off', day_offer: OFFER_ON}, '2026-11-15T06:05:00Z'), HOLD,
-    '06:00-06:10: paused');
+  assert.deepEqual(hero({easee_override: 'auto', last_state: 'peak_off', day_offer: OFFER_ON}, '2026-11-15T12:00:00Z'), ON,
+    'an older Pi build\'s offer: the hero no longer says 1.4 kW');
+  assert.deepEqual(hero({easee_override: 'on', last_state: 'peak_off', day_offer: {on: false}}, '2026-11-15T12:00:00Z'), ON);
+  assert.deepEqual(hero({easee_override: 'auto', last_state: 'peak_off', day_offer: OFFER_ON}, '2026-11-15T06:05:00Z'),
+    ['Peak rate — the Easee\'s own schedule pauses it until 06:30', 'Paused until 06:30'], '06:00-06:30: its own stop');
   assert.deepEqual(hero({easee_override: 'auto', last_state: 'charger_prestart', day_offer: {on: false}}, '2026-11-15T22:56:00Z'),
-    ['Peak rate — the Easee is on, capped at about 3 kW; full charging from 23:00', 'About 3 kW · full from 23:00']);
-  assert.deepEqual(hero({easee_override: 'off', last_state: 'charger_prestart'}, '2026-11-15T22:56:00Z'), HOLD, 'Off: no cap');
-  assert.deepEqual(hero({}, '2026-11-15T12:00:00Z'), HOLD, 'nothing known: as before');
+    ON, 'charger_prestart (no longer happens): no cap words');
+  assert.deepEqual(hero({easee_override: 'off', last_state: 'charger_prestart'}, '2026-11-15T22:56:00Z'),
+    ['Peak rate — the Easee is set to Off', 'Easee set to Off'], 'Off');
+  assert.deepEqual(hero({}, '2026-11-15T12:00:00Z'), ['Peak rate — off-peak from 23:00', 'Off-peak from 23:00'],
+    'nothing known: no claim either way');
   run(`livePlan = livePlanFrom({easee_override: 'auto', day_offer: ${JSON.stringify(OFFER_ON)}})`);
   at('2026-11-15T23:30:00Z');
   run(`renderTariff(${JSON.stringify(Object.assign({}, TARIFF, {period: 'offpeak', price_p: 6.66}))})`);
@@ -133,24 +133,25 @@ const STOPPED = {on: false, stopped_at: '2026-11-15T14:05:12.123456+00:00', why:
   const alerts = st => { run(`renderDeviceAlerts(${JSON.stringify(Object.assign({}, base, st))})`); return el('device-alerts').innerHTML; };
   const ez = kw => ({easee: {online: true, op_mode: 3, total_power_kw: kw}});
   let a = alerts(Object.assign(ez(3.1), {easee_override: 'auto', last_state: 'charger_prestart'}));
-  assert.doesNotMatch(a, /peak rate/, '22:54-23:00 in Auto: the BYD starting on the capped Easee is wanted');
+  assert.doesNotMatch(a, /peak rate/, 'an older Pi build\'s 22:54-23:00 cap in Auto: still not warned (harmless)');
   a = alerts(Object.assign(ez(7.1), {easee_override: 'on', last_state: 'charger_prestart'}));
   assert.match(a, /Easee is charging at the peak rate \(29\.76p\/kWh\)/, 'On: still warned in 22:54-23:00');
   assert.match(a, /The Easee is set to On: set it to Auto to wait for 23:00, or use Scheduled charge for a timed top-up\./);
   a = alerts(Object.assign(ez(1.4), {easee_override: 'auto', last_state: 'peak_off', day_offer: OFFER_ON}));
   assert.match(a, /Easee is charging at the peak rate/);
-  assert.match(a, /6\.66p\. The Pi will stop it within a minute\. If it carries on, pause the Easee in the Easee app\./);
+  assert.match(a, /6\.66p\. The Pi pauses the Easee until 23:00 after about a minute\. If it carries on, pause the Easee in the Easee app\./);
   assert.doesNotMatch(a, /to Auto/, 'already on Auto: no "set it to Auto"');
   a = alerts(Object.assign(ez(0.5), {easee_override: 'auto', last_state: 'peak_off', day_offer: OFFER_ON}));
-  assert.match(a, /the Pi stops the offer once cars have taken 0\.3 kWh today \(about 9p\)/, 'a little power: the kWh limit');
-  assert.doesNotMatch(a, /to Auto/);
+  assert.match(a, /the Pi pauses the Easee until 23:00 only if it draws 0\.8 kW or more for about a minute/,
+               'a little power: the day guard\'s 0.8 kW (16 Nov; no 0.3 kWh limit any more)');
+  assert.doesNotMatch(a, /to Auto|0\.3 kWh|day offer/);
   a = alerts(Object.assign(ez(7.1), {easee_override: 'auto', last_state: 'peak_off', day_offer: STOPPED}));
-  assert.match(a, /The Pi will stop it within a minute/, 'offer stopped (paused): the Pi pauses it');
+  assert.match(a, /The Pi pauses the Easee until 23:00 after about a minute/, 'an old stopped offer: the same');
   a = alerts(Object.assign(ez(7.1), {easee_override: 'auto', last_state: 'peak_off'}));
-  assert.match(a, /The Pi will stop it within a minute/, 'no day_offer field: the same');
+  assert.match(a, /The Pi pauses the Easee until 23:00 after about a minute/, 'no day_offer field: the same');
   a = alerts(ez(7.1));
   assert.match(a, /Easee is charging at the peak rate/, 'override not known: still warned');
-  assert.doesNotMatch(a, /to Auto|will stop it/, '... with no advice that may be wrong');
+  assert.doesNotMatch(a, /to Auto|will stop it|pauses the Easee/, '... with no advice that may be wrong');
   assert.ok(!html.includes('Set the charger to Auto to wait for 23:00'), 'the old advice is gone');
   // POWER16 at the peak rate: kept on for the Puma (its own timer decides), or on Auto (the Pi switches it off)
   const brk = {charge_sessions: {breaker: {active: {charging: true}}}};
@@ -166,12 +167,12 @@ const STOPPED = {on: false, stopped_at: '2026-11-15T14:05:12.123456+00:00', why:
   assert.match(a, /Easee and POWER16 are charging at the peak rate/);
   assert.match(a, /set it to Auto to wait for 23:00.*The Pi switches POWER16 off within 2 minutes/);
 
-  // ---- C7: the 21:00 problem line does not say the car's own schedule starts it
+  // ---- C7: the 21:00 problem line - 16 Nov: the BYD's own 23:00 schedule starts it, the Pi checks at 23:05
   const chk = {at: new Date(TestDate.now() - 30 * 60000).toISOString(), easee: {result: 'problem', detail: "the BYD isn't plugged in"},
                breaker: {result: 'skipped', detail: 'kept on'}};
   a = alerts({easee: {}, charger_check: chk});
-  assert.match(a, /Fix it before bed if you can: the Easee comes on at 22:54 and the Pi starts the BYD at 23:01; POWER16 is on from 23:00\./);
-  assert.doesNotMatch(a, /own schedule/);
+  assert.match(a, /Fix it before bed if you can: the BYD's own schedule starts it at 23:00, and the Pi starts it at 23:05 if it hasn't; POWER16 is on from 23:00\./);
+  assert.doesNotMatch(a, /22:54|23:01/);
 
   // ---- C8: the BYD card's read times
   ctx.byd = {schema: 1, status: 'ok', battery_pct: 64, range_miles: 200, charging: true,
@@ -242,10 +243,11 @@ exec(compile(open(sys.argv[1]).read(), "pi-heartbeat", "exec"), {"__name__": "__
     assert.equal(r.status, 1, r.stdout + r.stderr);
     const pi = (r.stdout.match(/::error title=Home Pi offline::(.*)/) || [])[1] || '';
     assert.match(pi, /not updated the dashboard for 60 minutes/);
-    assert.match(pi, /By day the Easee may be left offering about 1\.4 kW with its own peak block off/);
-    assert.match(pi, /could charge at the peak rate - pause the Easee in the Easee app/);
-    assert.match(pi, /At night the Pi's 23:01 start won't happen: after 23:00, resume the Easee if you paused it, then open the BYD app and tap Charge/);
-    assert.doesNotMatch(pi, /will not be started at 22:54/);
+    // 16 Nov: the always-on plan's words (test-2026-11-16.cjs checks them in full)
+    assert.match(pi, /By day the Easee stays on at full power/);
+    assert.match(pi, /would charge at the peak rate - pause it in the Easee app if needed/);
+    assert.match(pi, /after 23:00, resume the Easee if you paused it, and if the BYD isn't charging, open the BYD app and tap Charge/);
+    assert.doesNotMatch(pi, /will not be started at 22:54|1\.4 kW|23:01/);
   }
   console.log('audit 15 Nov dashboard tests OK');
 })().catch(e => { console.error(e); process.exit(1); });

@@ -42,7 +42,7 @@ run(slice('// PRE-HEAT TOP-UP.', '// END PRE-HEAT.'));
 run(slice('async function loadLiveState', '// IMMERSION USAGE'));
 
 (async () => {
-  assert.match(html, /const BUILD = "2026-11-15 audit-v28";/);
+  assert.match(html, /const BUILD = "2026-11-16 always-on-v29";/);
   assert.match(html, /now - vehicleAt > 90 \* 60000 \|\| !Number\.isFinite\(checkedAt\) \|\| now - checkedAt > 75 \* 60000/);
   assert.match(html, /<p class="vehicle-check" id="byd-car-check" role="status" hidden><\/p>/);
 
